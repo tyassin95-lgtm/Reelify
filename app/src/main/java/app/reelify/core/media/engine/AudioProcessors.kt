@@ -65,7 +65,9 @@ abstract class PcmProcessor : BaseAudioProcessor() {
 
     override fun onFlush(streamMetadata: AudioProcessor.StreamMetadata) {
         framesProcessed = 0
-        streamOffsetUs = streamMetadata.positionOffsetUs
+        // Only trust item-relative offsets; playback pipelines may report large renderer offsets.
+        val off = streamMetadata.positionOffsetUs
+        streamOffsetUs = if (off in 0..MAX_ITEM_OFFSET_US) off else 0
         onReset2()
     }
 
@@ -76,6 +78,10 @@ abstract class PcmProcessor : BaseAudioProcessor() {
     }
 
     protected open fun onReset2() {}
+
+    companion object {
+        const val MAX_ITEM_OFFSET_US = 2L * 60 * 60 * 1_000_000
+    }
 }
 
 /**
