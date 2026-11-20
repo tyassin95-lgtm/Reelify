@@ -1,0 +1,14 @@
+Reelify bundled music and sound effects
+=======================================
+
+All music tracks in assets/audio/music and all sound effects in assets/audio/sfx are ORIGINAL
+works generated procedurally by tools/generate_audio.py in the Reelify source repository
+(synthesized pads, plucked tones, bass, drums and filtered noise — no samples, loops or
+recordings from third parties were used).
+
+They are dedicated to the public domain under Creative Commons CC0 1.0 Universal
+(https://creativecommons.org/publicdomain/zero/1.0/). You may use them in commercial and
+non-commercial reels without attribution.
+
+Imported music: tracks you import from your device are your responsibility. Only use music
+you have the rights to publish.

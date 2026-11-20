@@ -1,0 +1,16 @@
+Third-party software and fonts
+==============================
+
+Fonts (SIL Open Font License 1.1 — see the OFL-*.txt files):
+  Manrope, Tajawal, Playfair Display, Nunito, Amiri
+
+Libraries (Apache License 2.0 unless noted):
+  AndroidX (Compose, Media3, CameraX, Room, DataStore, Navigation, Lifecycle)
+  Kotlin, kotlinx.coroutines, kotlinx.serialization
+  OkHttp
+  Coil
+  Google ML Kit Face Detection (on-device; Google ML Kit Terms of Service)
+
+External services called directly from the device (only when you configure keys):
+  OpenAI API (text: your idea, treatment profile, script) — https://openai.com/policies
+  Deepgram API (dialogue audio of the reel for captions) — https://deepgram.com/privacy
