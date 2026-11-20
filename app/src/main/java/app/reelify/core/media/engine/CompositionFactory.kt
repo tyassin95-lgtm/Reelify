@@ -306,3 +306,27 @@ class CompositionFactory(private val context: Context, private val fonts: ReelFo
         const val OUTPUT_MIME = MimeTypes.VIDEO_H264
     }
 }
+
+/** Single-clip composition (full source, effects applied) for the trim/beauty screen preview. */
+fun CompositionFactory.singleClipPreview(clip: MediaClip, grade: app.reelify.core.model.ColorGrade, width: Int = 720, height: Int = 1280): Composition {
+    val uri = if (clip.uri.startsWith("content://") || clip.uri.startsWith("file://")) Uri.parse(clip.uri) else Uri.fromFile(File(clip.uri))
+    if (clip.kind == MediaKind.AUDIO) {
+        val item = EditedMediaItem.Builder(MediaItem.fromUri(uri)).build()
+        return Composition.Builder(EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_AUDIO)).addItem(item).build()).build()
+    }
+    val fx = mutableListOf<Effect>()
+    if (clip.transform.rotation % 360 != 0) fx += ScaleAndRotateTransformation.Builder().setRotationDegrees(clip.transform.rotation.toFloat()).build()
+    fx += Presentation.createForWidthAndHeight(width, height, Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP)
+    val params = LookMath.params(clip.beauty, grade)
+    val track = clip.faceTrack
+    if (!params.isIdentity) fx += BeautyColorEffect(params, if (track != null && track.samples.isNotEmpty()) { tUs ->
+        LookMath.interpolate(track, tUs / 1000)?.let { LookMath.toUniform(it, clip.displayWidth, clip.displayHeight, clip.transform.rotation, width, height) }
+    } else null)
+    val reframe = ReframeTransformation(clip.transform.zoom, clip.transform.panX, clip.transform.panY, clip.transform.flipHorizontal, 0f, 0, 1)
+    if (!reframe.isStatic) fx += reframe
+    val mediaItem = if (clip.kind == MediaKind.IMAGE) MediaItem.Builder().setUri(uri).setImageDurationMs(5000).build() else MediaItem.fromUri(uri)
+    val b = EditedMediaItem.Builder(mediaItem).setEffects(Effects(listOf(ClipGainProcessor(if (clip.muted) 0f else clip.volume, 0)), fx))
+    if (clip.kind == MediaKind.IMAGE) b.setDurationUs(5_000_000).setFrameRate(30)
+    val types = if (clip.kind == MediaKind.VIDEO && clip.hasAudio) setOf(C.TRACK_TYPE_VIDEO, C.TRACK_TYPE_AUDIO) else setOf(C.TRACK_TYPE_VIDEO)
+    return Composition.Builder(EditedMediaItemSequence.Builder(types).addItem(b.build()).build()).build()
+}

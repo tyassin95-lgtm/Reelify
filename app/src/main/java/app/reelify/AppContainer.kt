@@ -65,5 +65,6 @@ class AppContainer(context: Context) {
     val compositionFactory = CompositionFactory(appContext, fonts)
     val transformerRunner = TransformerRunner(appContext)
     val autoEditor = AutoEditor(projects, library, settings, storage, preparer, compositionFactory, transformerRunner, faceAnalyzer, deepgram, director, credentials)
+    val importer = app.reelify.core.media.MediaImporter(projects, storage, probe, thumbnails, audioAnalyzer)
     val exportManager = ExportManager(appContext, projects, settings, storage, preparer, compositionFactory, transformerRunner)
 }

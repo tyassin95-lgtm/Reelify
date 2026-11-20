@@ -1,9 +1,13 @@
 package app.reelify
 
 import android.app.Application
+import coil3.ImageLoader
+import coil3.PlatformContext
+import coil3.SingletonImageLoader
+import coil3.video.VideoFrameDecoder
 import kotlinx.coroutines.launch
 
-class ReelifyApp : Application() {
+class ReelifyApp : Application(), SingletonImageLoader.Factory {
     lateinit var container: AppContainer
         private set
 
@@ -12,4 +16,7 @@ class ReelifyApp : Application() {
         container = AppContainer(this)
         container.appScope.launch { container.library.seedIfNeeded() }
     }
+
+    override fun newImageLoader(context: PlatformContext): ImageLoader =
+        ImageLoader.Builder(context).components { add(VideoFrameDecoder.Factory()) }.build()
 }
