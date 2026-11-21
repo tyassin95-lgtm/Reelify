@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -36,6 +37,8 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -190,5 +193,39 @@ fun RecTimerPill(elapsedMs: Long, targetMs: Long, recording: Boolean) {
 fun MicLevelBar(level: Float, modifier: Modifier = Modifier) {
     Box(modifier.width(8.dp).height(40.dp).clip(RoundedCornerShape(4.dp)).background(Color.White.copy(alpha = 0.18f)), contentAlignment = Alignment.BottomCenter) {
         Box(Modifier.fillMaxWidth().height((40 * level.coerceIn(0f, 1f)).dp).background(if (level > 0.92f) Rf.Danger else Rf.Success))
+    }
+}
+
+/**
+ * Coordinated camera overlay: TOP bar, a MIDDLE region shared by the teleprompter and status chips,
+ * and the BOTTOM controls. Each region is laid out by one Column, so elements can never overlap,
+ * whatever the screen size, cutout, gesture bar, font scale or Arabic text length. The
+ * teleprompter takes at most 48 % of the middle region and is hidden if less than 40 dp remain.
+ */
+@Composable
+fun CameraOverlayScaffold(
+    position: app.reelify.core.template.TeleprompterPosition,
+    desiredPrompterHeight: Dp,
+    top: @Composable () -> Unit,
+    prompter: (@Composable (height: Dp) -> Unit)?,
+    chips: @Composable () -> Unit,
+    bottom: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxWidth().testTag("cam_top")) { top() }
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().clipToBounds().padding(horizontal = 14.dp)) {
+            val h = minOf(desiredPrompterHeight, maxHeight * 0.48f)
+            Column(Modifier.fillMaxSize()) {
+                val p: @Composable () -> Unit = { if (prompter != null && h >= 40.dp) Box(Modifier.fillMaxWidth().testTag("cam_prompter")) { prompter(h) } }
+                val c: @Composable () -> Unit = { Box(Modifier.fillMaxWidth().clipToBounds().testTag("cam_chips")) { chips() } }
+                when (position) {
+                    app.reelify.core.template.TeleprompterPosition.NEAR_LENS -> { p(); Spacer(Modifier.height(8.dp)); Spacer(Modifier.weight(1f)); c() }
+                    app.reelify.core.template.TeleprompterPosition.MIDDLE -> { Spacer(Modifier.weight(1f)); p(); Spacer(Modifier.weight(1f)); c() }
+                    app.reelify.core.template.TeleprompterPosition.LOWER -> { c(); Spacer(Modifier.weight(1f)); p() }
+                }
+            }
+        }
+        Box(Modifier.fillMaxWidth().testTag("cam_bottom")) { bottom() }
     }
 }

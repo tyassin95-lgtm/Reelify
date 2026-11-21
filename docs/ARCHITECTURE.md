@@ -1,5 +1,16 @@
 # Reelify architecture
 
+> **2.0 additions** (details in [`REELIFY_V2_DESIGN.md`](REELIFY_V2_DESIGN.md)):
+> `core/template` (ReelTemplate/ShotRecipe models, BuiltInTemplates, ProductionPlanner,
+> TemplateRepository), `core/content` (GeneratedContentNormalizer, IraqiStyleGuide +
+> DialectChecker, TopicLibrary, ContentRepository), `integration/openai/ScriptWriter` (+
+> ScriptDtos, ScriptPrompts, ScriptValidator), `core/camera/CameraFaceMapping`,
+> `feature/flow` (four-stage screens), `feature/recording/CameraComponents`
+> (CameraOverlayScaffold, TeleprompterPanel), `core/designsystem/ReelComponents`.
+> Room schema **v2** (`MIGRATION_1_2`, additive): `projects.mode/templateId/templateVersion/
+> templateJson/overridesJson/scriptJson`, tables `custom_templates`, `style_examples`,
+> `topic_history`. No destructive fallback is configured.
+
 Single Gradle module (`:app`) organised by layer and feature. A manual DI container
 (`AppContainer`) wires everything; ViewModels are created through `rfViewModel { container -> … }`.
 

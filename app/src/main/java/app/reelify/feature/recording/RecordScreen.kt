@@ -325,78 +325,69 @@ private fun CameraRecorder(b: ProjectBundle, section: ReelSection, withAudio: Bo
         }
 
         // ---------------------------------------------------------------- coordinated overlay regions
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-            // TOP
-            Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (!recording) IconButton(onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, tr("Back", "رجوع"), tint = Color.White) } else Spacer(Modifier.size(48.dp))
-                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                    if (recording || countdown > 0) RecTimerPill(elapsed, target, recording)
-                    else {
-                        Text(shotLabel, style = MaterialTheme.typography.titleSmall, color = Color.White, maxLines = 1)
-                        Text(roleLabel.uppercase(), style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = Rf.RoseSoft, maxLines = 1)
+        val lineH = (cd.teleprompterSize * 1.5f).dp
+        CameraOverlayScaffold(
+            position = prompterPos,
+            desiredPrompterHeight = lineH * (setup?.teleprompterPreset?.visibleLines ?: 3) + 24.dp,
+            modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
+            top = {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (!recording) IconButton(onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, tr("Back", "رجوع"), tint = Color.White) } else Spacer(Modifier.size(48.dp))
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (recording || countdown > 0) RecTimerPill(elapsed, target, recording)
+                        else {
+                            Text(shotLabel, style = MaterialTheme.typography.titleSmall, color = Color.White, maxLines = 1)
+                            Text(roleLabel.uppercase(), style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = Rf.RoseSoft, maxLines = 1)
+                        }
                     }
+                    if (!recording) {
+                        if (caps.hasFront && caps.hasBack) IconButton({ front = !front; persistOverride { it.copy(facing = if (front) CameraFacing.FRONT else CameraFacing.BACK) } }) { Icon(Icons.Rounded.Cameraswitch, tr("Switch camera", "تبديل الكاميرا"), tint = Color.White) }
+                        IconButton({ sheet = CamSheet.SETTINGS }) { Icon(Icons.Rounded.MoreHoriz, tr("More settings", "إعدادات أكثر"), tint = Color.White) }
+                    } else Spacer(Modifier.size(96.dp))
                 }
-                if (!recording) {
-                    if (caps.hasFront && caps.hasBack) IconButton({ front = !front; persistOverride { it.copy(facing = if (front) CameraFacing.FRONT else CameraFacing.BACK) } }) { Icon(Icons.Rounded.Cameraswitch, tr("Switch camera", "تبديل الكاميرا"), tint = Color.White) }
-                    IconButton({ sheet = CamSheet.SETTINGS }) { Icon(Icons.Rounded.MoreHoriz, tr("More settings", "إعدادات أكثر"), tint = Color.White) }
-                } else Spacer(Modifier.size(96.dp))
-            }
-
-            // MIDDLE (teleprompter + status chips share this region; they can't overlap)
-            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 14.dp)) {
-                val lineH = (cd.teleprompterSize * 1.5f).dp
-                val desired = lineH * (setup?.teleprompterPreset?.visibleLines ?: 3) + 24.dp
-                val prompterH = desired.coerceAtMost(maxHeight * 0.48f).coerceAtLeast(64.dp)
-                Column(Modifier.fillMaxSize()) {
-                    val prompter: @Composable () -> Unit = {
-                        if (showPrompter && section.spokenScript.isNotBlank()) TeleprompterPanel(
-                            section.spokenScript, cd.teleprompterSize, cd.teleprompterSpeed, cd.teleprompterOpacity, cd.teleprompterMirror,
-                            prompterRunning, { prompterRunning = !prompterRunning }, prompterH,
-                        )
-                    }
-                    val chips: @Composable () -> Unit = {
-                        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            if (!recording) {
-                                val hint = framingHint(face, setup?.framing?.faceGuide != null || section.shotType == app.reelify.core.model.ShotType.TALKING_HEAD, cd.faceGuide)
-                                hint?.let { CameraChip(it.first, dot = if (it.second) Rf.Success else Rf.Warning) }
-                                if (showTip) (setup?.exposureHint?.text() ?: recipe?.instruction?.text())?.let { CameraChip(it) }
-                                beautyChip(effectState, cd.beauty.enabled && !clinical, clinical)?.let { (t, col) -> CameraChip(t, dot = col) }
-                                if (cd.beauty.enabled && !clinical && effectState == BeautyEffectState.ACTIVE) {
-                                    Box(Modifier.clip(CircleShape).background(if (comparing) Rf.Rose else Color.Black.copy(alpha = 0.55f))
-                                        .pointerInput(Unit) { detectTapGestures(onPress = { comparing = true; tryAwaitRelease(); comparing = false }) }
-                                        .padding(horizontal = 14.dp, vertical = 8.dp)) {
-                                        Text(if (comparing) tr("Original", "الأصلي") else tr("Hold to compare", "اضغط مطوّل للمقارنة"), style = MaterialTheme.typography.labelMedium, color = Color.White)
-                                    }
-                                }
+            },
+            prompter = if (showPrompter && section.spokenScript.isNotBlank()) { h ->
+                TeleprompterPanel(section.spokenScript, cd.teleprompterSize, cd.teleprompterSpeed, cd.teleprompterOpacity, cd.teleprompterMirror,
+                    prompterRunning, { prompterRunning = !prompterRunning }, h)
+            } else null,
+            chips = {
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (!recording) {
+                        val hint = framingHint(face, setup?.framing?.faceGuide != null || section.shotType == app.reelify.core.model.ShotType.TALKING_HEAD, cd.faceGuide)
+                        hint?.let { CameraChip(it.first, dot = if (it.second) Rf.Success else Rf.Warning) }
+                        if (showTip) (setup?.exposureHint?.text() ?: recipe?.instruction?.text())?.let { CameraChip(it) }
+                        beautyChip(effectState, cd.beauty.enabled && !clinical, clinical)?.let { (t, col) -> CameraChip(t, dot = col) }
+                        if (cd.beauty.enabled && !clinical && effectState == BeautyEffectState.ACTIVE) {
+                            Box(Modifier.clip(CircleShape).background(if (comparing) Rf.Rose else Color.Black.copy(alpha = 0.55f))
+                                .pointerInput(Unit) { detectTapGestures(onPress = { comparing = true; tryAwaitRelease(); comparing = false }) }
+                                .padding(horizontal = 14.dp, vertical = 8.dp)) {
+                                Text(if (comparing) tr("Original", "الأصلي") else tr("Hold to compare", "اضغط مطوّل للمقارنة"), style = MaterialTheme.typography.labelMedium, color = Color.White)
                             }
                         }
                     }
-                    when (prompterPos) {
-                        TeleprompterPosition.NEAR_LENS -> { prompter(); Spacer(Modifier.height(8.dp)); Spacer(Modifier.weight(1f)); chips() }
-                        TeleprompterPosition.MIDDLE -> { Spacer(Modifier.weight(1f)); prompter(); Spacer(Modifier.weight(1f)); chips() }
-                        TeleprompterPosition.LOWER -> { chips(); Spacer(Modifier.weight(1f)); prompter() }
+                }
+            },
+            bottom = {
+                Column {
+                    camError?.let { ErrorBanner(it, Modifier.padding(horizontal = 14.dp, vertical = 4.dp), onDismiss = controller::clearError) }
+                    Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 14.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                        if (!recording) {
+                            CameraTool(Icons.Rounded.Face, tr("Beauty", "تجميل"), cd.beauty.enabled && !clinical, { sheet = CamSheet.BEAUTY }, enabled = !clinical)
+                            CameraTool(Icons.Rounded.Subject, tr("Script", "السكربت"), showPrompter, { sheet = CamSheet.SCRIPT }, enabled = section.spokenScript.isNotBlank())
+                        } else {
+                            Spacer(Modifier.width(68.dp)); MicLevelBar(((rec as RecState.Recording).amplitude).toFloat()); Spacer(Modifier.width(60.dp))
+                        }
+                        RecordButton(recording, countdown > 0, elapsed.toFloat() / target) {
+                            if (recording) { controller.stopRecording(); prompterRunning = false } else if (countdown == 0) startWithCountdown()
+                        }
+                        if (!recording) {
+                            CameraTool(Icons.Rounded.Tune, tr("Camera", "الكاميرا"), false, { sheet = CamSheet.SETTINGS })
+                            if (caps.hasFlash) CameraTool(if (torch) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff, tr("Light", "الضوء"), torch, { controller.setTorch(!torch) }) else Spacer(Modifier.width(68.dp))
+                        } else Spacer(Modifier.width(136.dp))
                     }
                 }
-            }
-
-            // BOTTOM controls
-            camError?.let { ErrorBanner(it, Modifier.padding(horizontal = 14.dp, vertical = 4.dp), onDismiss = controller::clearError) }
-            Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 14.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                if (!recording) {
-                    CameraTool(Icons.Rounded.Face, tr("Beauty", "تجميل"), cd.beauty.enabled && !clinical, { sheet = CamSheet.BEAUTY }, enabled = !clinical)
-                    CameraTool(Icons.Rounded.Subject, tr("Script", "السكربت"), showPrompter, { sheet = CamSheet.SCRIPT }, enabled = section.spokenScript.isNotBlank())
-                } else {
-                    Spacer(Modifier.width(68.dp)); MicLevelBar(((rec as RecState.Recording).amplitude).toFloat()); Spacer(Modifier.width(60.dp))
-                }
-                RecordButton(recording, countdown > 0, elapsed.toFloat() / target) {
-                    if (recording) { controller.stopRecording(); prompterRunning = false } else if (countdown == 0) startWithCountdown()
-                }
-                if (!recording) {
-                    CameraTool(Icons.Rounded.Tune, tr("Camera", "الكاميرا"), false, { sheet = CamSheet.SETTINGS })
-                    if (caps.hasFlash) CameraTool(if (torch) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff, tr("Light", "الضوء"), torch, { controller.setTorch(!torch) }) else Spacer(Modifier.width(68.dp))
-                } else Spacer(Modifier.width(136.dp))
-            }
-        }
+            },
+        )
 
         if (countdown > 0) Box(Modifier.fillMaxSize().background(Color(0x55000000)), contentAlignment = Alignment.Center) {
             Text("$countdown", style = MaterialTheme.typography.displayLarge.copy(fontSize = 120.sp, fontWeight = FontWeight.ExtraBold))
