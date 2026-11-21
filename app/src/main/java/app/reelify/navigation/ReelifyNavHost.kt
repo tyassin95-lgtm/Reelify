@@ -1,12 +1,18 @@
 package app.reelify.navigation
 
 import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -47,10 +53,34 @@ fun ReelifyNavHost(nav: NavHostController = rememberNavController()) {
     val back: () -> Unit = { nav.popBackStack() }
     NavHost(
         nav, startDestination = Routes.SPLASH, modifier = Modifier.fillMaxSize().background(Rf.Background),
-        enterTransition = { slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, tween(320), initialOffset = { it / 5 }) + fadeIn(tween(320)) },
-        exitTransition = { fadeOut(tween(200)) },
-        popEnterTransition = { fadeIn(tween(260)) },
-        popExitTransition = { slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.End, tween(280), targetOffset = { it / 5 }) + fadeOut(tween(280)) },
+        enterTransition = {
+            slideIntoContainer(
+                AnimatedContentTransitionScope.SlideDirection.Start,
+                tween(240, easing = FastOutSlowInEasing),
+                initialOffset = { it / 12 },
+            ) + fadeIn(tween(220))
+        },
+        exitTransition = {
+            slideOutOfContainer(
+                AnimatedContentTransitionScope.SlideDirection.Start,
+                tween(200, easing = FastOutSlowInEasing),
+                targetOffset = { it / 18 },
+            ) + fadeOut(tween(180))
+        },
+        popEnterTransition = {
+            slideIntoContainer(
+                AnimatedContentTransitionScope.SlideDirection.End,
+                tween(220, easing = FastOutSlowInEasing),
+                initialOffset = { it / 14 },
+            ) + fadeIn(tween(200))
+        },
+        popExitTransition = {
+            slideOutOfContainer(
+                AnimatedContentTransitionScope.SlideDirection.End,
+                tween(220, easing = FastOutSlowInEasing),
+                targetOffset = { it / 10 },
+            ) + fadeOut(tween(180))
+        },
     ) {
         composable(Routes.SPLASH) {
             SplashScreen(onDone = { nav.navigate(Routes.MAIN) { popUpTo(Routes.SPLASH) { inclusive = true } } })
@@ -91,19 +121,53 @@ fun ReelifyNavHost(nav: NavHostController = rememberNavController()) {
                     if (templateProject) nav.popBackStack() else nav.navigate(Routes.trim(cid)) { popUpTo(Routes.RECORD) { inclusive = true } }
                 })
         }
-        // ------------------------------------------------------------ Reelify 2.0 four-stage flow
+        // ------------------------------------------------------------ Reelify 2.x four-stage flow
         composable(Routes.CHOOSE, arguments = listOf(navArgument("treatment") { type = NavType.StringType; defaultValue = "" }, navArgument("template") { type = NavType.StringType; defaultValue = "" })) { e ->
-            ChooseReelScreen(e.arguments?.getString("treatment"), e.arguments?.getString("template"), onBack = back,
-                onCreated = { pid -> projectModes[pid] = true; nav.navigate(Routes.message(pid)) { popUpTo(Routes.MAIN) } })
+            ChooseReelScreen(
+                presetTreatment = e.arguments?.getString("treatment"),
+                presetTemplate = e.arguments?.getString("template"),
+                onBack = back,
+                onContinueSession = { sess ->
+                    nav.navigate(Routes.messageDraft(sess.sessionId, sess.treatmentId, sess.templateId, sess.language.code, sess.duration.totalMs)) {
+                        launchSingleTop = true
+                    }
+                },
+            )
         }
-        composable(Routes.MESSAGE) { e -> val pid = e.arguments!!.getString("pid")!!
-            MessageScreen(pid, onBack = back, onScriptReady = { nav.navigate(Routes.script2(pid)) { launchSingleTop = true } }, onEditTreatment = { nav.navigate(Routes.treatment(it)) })
+        composable(
+            Routes.MESSAGE,
+            arguments = listOf(
+                navArgument("treatment") { type = NavType.StringType; defaultValue = "" },
+                navArgument("template") { type = NavType.StringType; defaultValue = "" },
+                navArgument("lang") { type = NavType.StringType; defaultValue = "" },
+                navArgument("dur") { type = NavType.LongType; defaultValue = 30_000L },
+            ),
+        ) { e ->
+            val pidOrDraft = e.arguments!!.getString("pid")!!
+            MessageScreen(
+                pidOrDraftKey = pidOrDraft,
+                fallbackTreatmentId = e.arguments?.getString("treatment").orEmpty(),
+                fallbackTemplateId = e.arguments?.getString("template").orEmpty(),
+                fallbackLangCode = e.arguments?.getString("lang").orEmpty(),
+                fallbackDurationMs = e.arguments?.getLong("dur") ?: 30_000L,
+                onBack = back,
+                onScriptReady = { realPid ->
+                    projectModes[realPid] = true
+                    if (pidOrDraft != realPid) {
+                        nav.navigate(Routes.message(realPid)) { popUpTo(Routes.MAIN) }
+                    }
+                    nav.navigate(Routes.script2(realPid)) { launchSingleTop = true }
+                },
+                onEditTreatment = { nav.navigate(Routes.treatment(it)) },
+            )
         }
         composable(Routes.SCRIPT2) { e -> val pid = e.arguments!!.getString("pid")!!
+            DeletedProjectGuard(pid) { nav.popBackStack(Routes.MAIN, false) }
             ScriptReviewScreen(pid, onBack = back, onApproved = { nav.navigate(Routes.film(pid)) { launchSingleTop = true } },
                 onChangeTopic = { if (!nav.popBackStack(Routes.MESSAGE, false)) nav.navigate(Routes.message(pid)) })
         }
         composable(Routes.FILM) { e -> val pid = e.arguments!!.getString("pid")!!
+            DeletedProjectGuard(pid) { nav.popBackStack(Routes.MAIN, false) }
             FilmScreen(pid, onBack = back,
                 onRecord = { sid, role, muted, replace -> nav.navigate(Routes.record(pid, sid, role, muted, replace)) },
                 onTrim = { cid -> nav.navigate(Routes.trim(cid)) },
@@ -111,6 +175,7 @@ fun ReelifyNavHost(nav: NavHostController = rememberNavController()) {
                 onScript = { nav.navigate(Routes.script2(pid)) { launchSingleTop = true } })
         }
         composable(Routes.REVIEW) { e -> val pid = e.arguments!!.getString("pid")!!
+            DeletedProjectGuard(pid) { nav.popBackStack(Routes.MAIN, false) }
             FootageReviewScreen(pid, onBack = back,
                 onRecord = { sid, role -> nav.navigate(Routes.record(pid, sid, role)) },
                 onTrim = { cid -> nav.navigate(Routes.trim(cid)) },
@@ -126,6 +191,7 @@ fun ReelifyNavHost(nav: NavHostController = rememberNavController()) {
         }
         composable(Routes.PREVIEW) { e -> val pid = e.arguments!!.getString("pid")!!
             RememberProjectMode(pid)
+            DeletedProjectGuard(pid) { nav.popBackStack(Routes.MAIN, false) }
             PreviewScreen(pid, onBack = back,
                 onAdvanced = { nav.navigate(Routes.editor(pid)) },
                 onCaptions = { nav.navigate(Routes.captions(pid)) },
@@ -192,5 +258,21 @@ fun NavHostController.openProject(p: app.reelify.core.model.Project) {
 @Composable
 private fun RememberProjectMode(pid: String) {
     val c = app.reelify.feature.common.appContainer()
-    androidx.compose.runtime.LaunchedEffect(pid) { c.projects.getProject(pid)?.let { projectModes[pid] = it.isTemplate } }
+    LaunchedEffect(pid) { c.projects.getProject(pid)?.let { projectModes[pid] = it.isTemplate } }
+}
+
+/** Exits cleanly to MainScreen if a project was deleted while deep in a stale back-stack entry. */
+@Composable
+private fun DeletedProjectGuard(pid: String, onMissing: () -> Unit) {
+    val c = app.reelify.feature.common.appContainer()
+    var seenExists by remember(pid) { mutableStateOf(false) }
+    LaunchedEffect(pid) {
+        c.projects.observeBundle(pid).collect { bundle ->
+            if (bundle != null) {
+                seenExists = true
+            } else if (seenExists || c.projects.getProject(pid) == null) {
+                onMissing()
+            }
+        }
+    }
 }

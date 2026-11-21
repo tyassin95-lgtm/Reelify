@@ -1,5 +1,6 @@
 package app.reelify.feature.home
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -130,10 +131,13 @@ private data class Tab(val label: String, val icon: ImageVector)
 fun MainScreen(nav: NavHostController) {
     val s = strings()
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    // Modern Android Back semantics: pressing Back on a secondary tab (Projects/Studio/Settings)
+    // returns to Home inside MainScreen instead of exiting the Activity (avoids shrink-to-launcher).
+    BackHandler(enabled = tab != 0) { tab = 0 }
     val tabs = listOf(Tab(s.home, Icons.Rounded.Home), Tab(s.projects, Icons.Rounded.VideoLibrary), Tab(s.studio, Icons.Rounded.Palette), Tab(s.settings, Icons.Rounded.Settings))
     Column(Modifier.fillMaxSize().background(Rf.Background)) {
         Box(Modifier.weight(1f)) {
-            AnimatedContent(tab, transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(160)) }, label = "tab") { t ->
+            AnimatedContent(tab, transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(140)) }, label = "tab") { t ->
                 when (t) {
                     0 -> HomeTab(nav)
                     1 -> ProjectsTab(nav)

@@ -120,6 +120,35 @@ fun ScriptReviewScreen(pid: String, onBack: () -> Unit, onApproved: () -> Unit, 
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             StageHeading(2, tr("Your script", "السكربت"), meta?.topicTitle?.takeIf { it.isNotBlank() } ?: tpl.name.text(), stepLabel = stepLabel(2))
 
+            val hasNonEnglishMedical = b.sections.any {
+                app.reelify.core.content.MedicalGlossary.validate(it.spokenScript + " " + it.onScreenText).isNotEmpty()
+            }
+            if (hasNonEnglishMedical) {
+                Column(Modifier.padding(horizontal = RfDims.gutter), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    InfoBanner(
+                        tr(
+                            "Some medical terms in this script use Arabic transliterations. Keep medical terms in English for clinical clarity.",
+                            "بعض المصطلحات الطبية بهذا السكربت مكتوبة بالعربي. خلّي المصطلحات الطبية بالإنكليزي للوضوح.",
+                        ),
+                        color = Rf.Info,
+                    )
+                    GhostButton(
+                        tr("Convert medical terms to English", "تحويل المصطلحات الطبية للإنكليزي"),
+                        { vm.normalizeSavedMedicalTerminology() },
+                    )
+                }
+            }
+
+            if (meta != null && meta.narrativeSummary.isNotEmpty()) {
+                app.reelify.core.designsystem.CinematicCard(modifier = Modifier.padding(horizontal = RfDims.gutter)) {
+                    Eyebrow(tr("Narrative progression", "تسلسل الفكرة"))
+                    Spacer(Modifier.height(6.dp))
+                    meta.narrativeSummary.forEach { line ->
+                        Text("• $line", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+
             if (meta != null && meta.hookOptions.isNotEmpty()) Column(Modifier.padding(horizontal = RfDims.gutter)) {
                 Eyebrow(tr("Opening hook", "الافتتاحية"))
                 Spacer(Modifier.height(8.dp))

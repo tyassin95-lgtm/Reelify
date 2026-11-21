@@ -26,9 +26,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.BookmarkAdd
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -50,13 +56,17 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.horizontalScroll
+import app.reelify.core.content.CreativeTopic
+import app.reelify.core.content.IdeaGenerationMode
 import app.reelify.core.content.TopicUiCategory
 import app.reelify.core.designsystem.BottomActionBar
 import app.reelify.core.designsystem.Chip
+import app.reelify.core.designsystem.CinematicCard
 import app.reelify.core.designsystem.ErrorBanner
 import app.reelify.core.designsystem.Eyebrow
 import app.reelify.core.designsystem.GhostButton
 import app.reelify.core.designsystem.InfoBanner
+import app.reelify.core.designsystem.PillAction
 import app.reelify.core.designsystem.PrimaryButton
 import app.reelify.core.designsystem.ProgressOverlay
 import app.reelify.core.designsystem.ReelTemplateCard
@@ -64,6 +74,7 @@ import app.reelify.core.designsystem.ReelTextField
 import app.reelify.core.designsystem.Rf
 import app.reelify.core.designsystem.RfDims
 import app.reelify.core.designsystem.ScreenFrame
+import app.reelify.core.designsystem.ScriptText
 import app.reelify.core.designsystem.SegmentedControl
 import app.reelify.core.designsystem.Shimmer
 import app.reelify.core.designsystem.Spinner
@@ -104,7 +115,12 @@ fun stepLabel(step: Int) = tr("STEP $step OF 4", "الخطوة $step من 4")
 // =========================================================================================== Stage 1
 
 @Composable
-fun ChooseReelScreen(presetTreatment: String?, presetTemplate: String?, onBack: () -> Unit, onCreated: (String) -> Unit) {
+fun ChooseReelScreen(
+    presetTreatment: String?,
+    presetTemplate: String?,
+    onBack: () -> Unit,
+    onContinueSession: (CreationDraftSession) -> Unit,
+) {
     val vm = rfViewModel { ChooseReelViewModel(it) }
     val c = appContainer()
     val arabicUi = LocalArabicUi.current
@@ -116,7 +132,7 @@ fun ChooseReelScreen(presetTreatment: String?, presetTemplate: String?, onBack: 
     var language by rememberSaveable { mutableStateOf<ReelLanguage?>(null) }
     var duration by rememberSaveable { mutableStateOf<ReelDuration?>(null) }
     var templateId by rememberSaveable { mutableStateOf(presetTemplate?.takeIf { it.isNotBlank() }) }
-    var creating by remember { mutableStateOf(false) }
+    var starting by remember { mutableStateOf(false) }
     var restored by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         if (!restored) {
@@ -138,13 +154,17 @@ fun ChooseReelScreen(presetTreatment: String?, presetTemplate: String?, onBack: 
             PrimaryButton(tr("Continue", "متابعة"), {
                 val t = treatment ?: return@PrimaryButton
                 val tp = template ?: return@PrimaryButton
-                creating = true
-                scope.launch { runCatching { vm.create(lang, t, dur, tp, arabicUi) }.onSuccess { onCreated(it.id) }; creating = false }
-            }, Modifier.weight(1f), icon = Icons.AutoMirrored.Rounded.ArrowForward, enabled = treatment != null && template != null, loading = creating)
+                starting = true
+                scope.launch {
+                    runCatching { vm.startSession(lang, t, dur, tp) }
+                        .onSuccess(onContinueSession)
+                    starting = false
+                }
+            }, Modifier.weight(1f), icon = Icons.AutoMirrored.Rounded.ArrowForward, enabled = treatment != null && template != null, loading = starting)
         }
     }) {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-            StageHeading(1, tr("Choose your reel", "اختار الريل"), tr("Four quick choices. Filming and editing are already planned.", "أربع اختيارات سريعة. التصوير والمونتاج مخططين مسبقاً."), stepLabel = stepLabel(1))
+            StageHeading(1, tr("Choose your reel", "اختار الريل"), tr("Four quick choices. Drafts are saved only after generating your script.", "أربع اختيارات سريعة. المشروع ينحفظ بس بعد كتابة السكربت."), stepLabel = stepLabel(1))
 
             Column(Modifier.padding(horizontal = RfDims.gutter)) {
                 Eyebrow(tr("Treatment", "العلاج"))
@@ -190,10 +210,30 @@ fun ChooseReelScreen(presetTreatment: String?, presetTemplate: String?, onBack: 
 
 // =========================================================================================== Stage 2
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun MessageScreen(pid: String, onBack: () -> Unit, onScriptReady: () -> Unit, onEditTreatment: (String) -> Unit) {
+fun MessageScreen(
+    pidOrDraftKey: String,
+    fallbackTreatmentId: String = "",
+    fallbackTemplateId: String = "",
+    fallbackLangCode: String = "",
+    fallbackDurationMs: Long = 30_000L,
+    onBack: () -> Unit,
+    onScriptReady: (String) -> Unit,
+    onEditTreatment: (String) -> Unit,
+) {
     val arabicUi = LocalArabicUi.current
-    val vm = rfViewModel(pid) { MessageViewModel(it, pid, arabicUi) }
+    val vm = rfViewModel(pidOrDraftKey) {
+        MessageViewModel(
+            c = it,
+            pidOrDraftKey = pidOrDraftKey,
+            arabicUi = arabicUi,
+            fallbackTreatmentId = fallbackTreatmentId,
+            fallbackTemplateId = fallbackTemplateId,
+            fallbackLangCode = fallbackLangCode,
+            fallbackDurationMs = fallbackDurationMs,
+        )
+    }
     val ui by vm.ui.collectAsStateWithLifecycle()
     var own by rememberSaveable { mutableStateOf("") }
     var advanced by rememberSaveable { mutableStateOf(false) }
@@ -221,10 +261,50 @@ fun MessageScreen(pid: String, onBack: () -> Unit, onScriptReady: () -> Unit, on
                         }
                     }
                     SurpriseButton(ui.ideasLoading, enabled = ui.generating == null) { vm.surpriseMe() }
-                    if (ui.ideasLoading) repeat(3) { Shimmer(Modifier.fillMaxWidth().height(72.dp)) }
+                    if (ui.ideasLoading) repeat(3) { Shimmer(Modifier.fillMaxWidth().height(84.dp)) }
                     ui.ideas.forEach { idea ->
-                        TopicSuggestionCard(idea.title, tr("Fresh concept", "فكرة جديدة"), onClick = { vm.useIdea(idea, onScriptReady) }, hook = idea.hook,
-                            loading = ui.generatingKey == "ai:" + idea.title.take(40), enabled = ui.generating == null)
+                        AiIdeaCard(
+                            idea = idea,
+                            loading = ui.generatingKey == idea.id,
+                            enabled = ui.generating == null && !ui.ideasLoading,
+                            onUse = { vm.useIdea(idea, onScriptReady) },
+                            onMoreLikeThis = { vm.surpriseMe(idea, IdeaGenerationMode.MORE_LIKE_THIS) },
+                            onDifferentAngle = { vm.surpriseMe(idea, IdeaGenerationMode.DIFFERENT_ANGLE) },
+                            onSaveForLater = { vm.saveIdeaForLater(idea) },
+                        )
+                    }
+                    if (ui.ideas.isNotEmpty() && !ui.ideasLoading) {
+                        GhostButton(
+                            tr("Regenerate 5 fresh ideas", "اقترح 5 أفكار جديدة ثانية"),
+                            { vm.surpriseMe() },
+                            icon = Icons.Rounded.Refresh,
+                        )
+                    }
+                    ui.notice?.let { InfoBanner(it, color = Rf.Success) }
+                }
+
+                if (ui.savedIdeas.isNotEmpty()) {
+                    Column(Modifier.padding(horizontal = RfDims.gutter), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Eyebrow(tr("Saved ideas (${ui.savedIdeas.size})", "أفكار محفوظة (${ui.savedIdeas.size})"))
+                        ui.savedIdeas.forEach { saved ->
+                            CinematicCard {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Rounded.Bookmark, null, tint = Rf.Gold, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        ScriptText(saved.title, style = MaterialTheme.typography.titleSmall)
+                                        if (saved.educationalObjective.isNotBlank()) {
+                                            Text(saved.educationalObjective, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                                        }
+                                    }
+                                    IconButton({ vm.removeSavedIdea(saved) }) {
+                                        Icon(Icons.Rounded.DeleteOutline, tr("Remove saved idea", "حذف الفكرة"), tint = Rf.TextTertiary)
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                PillAction(tr("Use saved idea", "استخدم الفكرة"), Icons.AutoMirrored.Rounded.ArrowForward, { vm.useIdea(saved, onScriptReady) }, primary = true, enabled = ui.generating == null)
+                            }
+                        }
                     }
                 }
 
@@ -304,6 +384,54 @@ fun MessageScreen(pid: String, onBack: () -> Unit, onScriptReady: () -> Unit, on
         }
         ui.generating?.let { topic ->
             ProgressOverlay(tr("Writing your script…", "جاري كتابة السكربت…"), detail = topic, cancelLabel = tr("Cancel", "إلغاء"), onCancel = vm::cancel)
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AiIdeaCard(
+    idea: CreativeTopic,
+    loading: Boolean,
+    enabled: Boolean,
+    onUse: () -> Unit,
+    onMoreLikeThis: () -> Unit,
+    onDifferentAngle: () -> Unit,
+    onSaveForLater: () -> Unit,
+) {
+    CinematicCard(onClick = { if (enabled && !loading) onUse() }) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(idea.uiCategory.label.text().uppercase(), style = MaterialTheme.typography.labelSmall, color = Rf.RoseSoft)
+                if (idea.primaryFactIds.isNotEmpty()) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(tr("Clinical fact grounded", "معلومة موثقة"), style = MaterialTheme.typography.labelSmall, color = Rf.Success)
+                }
+            }
+            ScriptText(idea.title, style = MaterialTheme.typography.titleMedium)
+            if (idea.educationalObjective.isNotBlank()) {
+                Text(
+                    tr("Viewers learn: ${idea.educationalObjective}", "الفائدة للمشاهد: ${idea.educationalObjective}"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Rf.TextSecondary,
+                    maxLines = 2,
+                )
+            }
+            if (idea.hookAngle.isNotBlank()) {
+                ScriptText("“${idea.hookAngle}”", style = MaterialTheme.typography.bodyMedium, maxLines = 2)
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PillAction(
+                    text = if (loading) tr("Writing…", "جاري الكتابة…") else tr("Use idea", "استخدم الفكرة"),
+                    icon = Icons.AutoMirrored.Rounded.ArrowForward,
+                    onClick = onUse,
+                    enabled = enabled && !loading,
+                    primary = true,
+                )
+                PillAction(tr("More like this", "مشابهة لها"), Icons.Rounded.AutoAwesome, onMoreLikeThis, enabled = enabled && !loading)
+                PillAction(tr("Different angle", "زاوية ثانية"), Icons.Rounded.Refresh, onDifferentAngle, enabled = enabled && !loading)
+                PillAction(tr("Save", "حفظ"), Icons.Rounded.BookmarkAdd, onSaveForLater, enabled = enabled && !loading)
+            }
         }
     }
 }

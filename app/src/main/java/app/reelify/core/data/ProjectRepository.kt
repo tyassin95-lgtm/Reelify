@@ -35,6 +35,7 @@ import app.reelify.core.util.Ids
 import app.reelify.core.util.decodeOrNull
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -88,6 +89,47 @@ class ProjectRepository(
             ReelSection(id = "sec-" + Ids.new(), index = i + 1, purpose = p, updatedAt = now).toEntity(project.id)
         })
         project
+    }
+
+    /**
+     * Atomically creates and persists a complete template project together with its three sections
+     * and validated script only after script generation succeeds (Reelify 2.2 ephemeral-session flow).
+     */
+    suspend fun createFromTemplateWithScriptAtomically(
+        language: ReelLanguage,
+        treatmentId: String,
+        duration: ReelDuration,
+        template: ReelTemplate,
+        title: String,
+        baseEdit: EditSettings,
+        concept: ReelConcept,
+        meta: ScriptMeta,
+        scripts: List<SectionScript>,
+        reason: String = "AI script",
+    ): ProjectBundle = writeLock.withLock {
+        val now = clock.now()
+        val projectId = Ids.new()
+        val edit = ProductionPlanner.templateEdit(template, duration, baseEdit)
+        val project = Project(
+            id = projectId,
+            title = title,
+            createdAt = now,
+            updatedAt = now,
+            language = language,
+            treatmentId = treatmentId,
+            duration = duration,
+            style = legacyStyleFor(template),
+            concept = concept,
+            status = ProjectStatus.SCRIPTED,
+            edit = edit,
+            mode = ProductionMode.TEMPLATE,
+            template = template,
+            script = meta,
+        )
+        val initialSections = ProductionPlanner.sections(template, emptyList(), { "sec-" + Ids.new() }, now)
+        val mergedSections = ProductionPlanner.mergeScript(template, initialSections, scripts, respectLocks = false, onlyIndex = null, now = now)
+        dao.insertProjectWithSections(project.toEntity(), mergedSections.map { it.toEntity(projectId) })
+        ProjectBundle(project, mergedSections, emptyList())
     }
 
     /**
@@ -287,7 +329,40 @@ class ProjectRepository(
 
     suspend fun delete(id: String) = writeLock.withLock {
         dao.delete(id)
-        onProjectDeleted(id)
+        runCatching { onProjectDeleted(id) }
+    }
+
+    /**
+     * Bulk-deletes projects from Room (in batches) and removes only project-owned directories.
+     * Shared or external gallery files are untouched. Handles per-directory I/O failures safely.
+     */
+    suspend fun deleteMany(ids: Collection<String>): Int = writeLock.withLock {
+        val unique = ids.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        if (unique.isEmpty()) return@withLock 0
+        unique.chunked(400).forEach { chunk ->
+            dao.deleteByIds(chunk)
+        }
+        unique.forEach { id ->
+            runCatching { onProjectDeleted(id) }
+        }
+        unique.size
+    }
+
+    /** Returns legacy/abandoned projects that have neither a script/plan nor any attached clips. */
+    suspend fun findEmptyLegacyDrafts(): List<Project> {
+        val out = mutableListOf<Project>()
+        val clipsByProject = dao.getAllClips().groupBy { it.projectId }
+        val projects = dao.observeAll().firstOrNull() ?: emptyList()
+        for (entity in projects) {
+            val domain = entity.toDomain() ?: continue
+            if (domain.status != ProjectStatus.DRAFT || domain.script != null || domain.plan != null) continue
+            if (!clipsByProject[domain.id].isNullOrEmpty()) continue
+            val secs = dao.getSections(domain.id).mapNotNull { it.toDomain() }
+            if (secs.all { it.spokenScript.isBlank() }) {
+                out += domain
+            }
+        }
+        return out
     }
 
     suspend fun duplicateAsTemplate(id: String): Project? {

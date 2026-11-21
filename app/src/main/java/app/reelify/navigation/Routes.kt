@@ -17,11 +17,19 @@ object Routes {
     fun checklist(pid: String) = "checklist/$pid"
     const val RECORD = "record/{pid}/{sid}?role={role}&muted={muted}&replace={replace}"
     fun record(pid: String, sid: String, role: String = "PRIMARY", muted: Boolean = false, replace: Boolean = false) = "record/$pid/$sid?role=$role&muted=$muted&replace=$replace"
-    // ---- Reelify 2.0 four-stage flow
+    // ---- Reelify 2.x four-stage flow (Stage 2 accepts either an ephemeral session `draft_<id>` or a persisted project id)
     const val CHOOSE = "choose?treatment={treatment}&template={template}"
     fun choose(treatment: String? = null, template: String? = null) = "choose?treatment=${treatment.orEmpty()}&template=${template.orEmpty()}"
-    const val MESSAGE = "message/{pid}"
-    fun message(pid: String) = "message/$pid"
+    const val MESSAGE = "message/{pid}?treatment={treatment}&template={template}&lang={lang}&dur={dur}"
+    fun message(pid: String) = "message/${Uri.encode(pid)}"
+    fun messageDraft(
+        sessionId: String,
+        treatmentId: String,
+        templateId: String,
+        languageCode: String,
+        durationMs: Long,
+    ): String =
+        "message/${Uri.encode("draft_$sessionId")}?treatment=${Uri.encode(treatmentId)}&template=${Uri.encode(templateId)}&lang=${Uri.encode(languageCode)}&dur=$durationMs"
     const val SCRIPT2 = "script2/{pid}"
     fun script2(pid: String) = "script2/$pid"
     const val FILM = "film/{pid}"
