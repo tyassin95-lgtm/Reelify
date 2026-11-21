@@ -3,7 +3,34 @@
 This document lists what is **not** done, what is approximated, and what could not be verified in
 the build environment. Nothing here is hidden behind a non-functional button in the app.
 
-## Verification limits of this build environment
+## Reelify 2.0 — what could not be verified here
+
+* **Camera & beauty on real hardware: not verified.** No physical phone was available. The new
+  camera UI, template camera presets, teleprompter, hold-to-compare, the honest effect states and
+  the *sensor-space face mapping fix* compile against the real CameraX APIs and are unit-tested
+  (mapping maths) and GPU-tested (shader output on a synthetic card), but nobody has looked at a
+  real face through the live preview with this build. Do this first on your phone: record a talking
+  shot with each preset, use *Hold to compare*, and confirm the face-localised smoothing sits on
+  your face (front and rear camera).
+* The face mapping assumes the analysis and preview streams share the same 16:9 sensor crop; on a
+  device that crops them differently, face-weighted effects (under-eye, refine) may sit slightly
+  off in the *live preview* only. Skin-tone smoothing still applies everywhere and the exported reel
+  uses frame-accurate face tracks from the file.
+* **AI quality is unverified with the live model.** No OpenAI/Deepgram keys were available. Prompts,
+  schemas, validation, repair and merging were tested against a mock server. The 30-scenario
+  creative evaluation is ready to run (`docs/eval/CREATIVE_EVAL.md`) but has **no scores yet**.
+* **Iraqi Arabic authenticity is not proven by any test.** The 24 built-in reference lines were
+  written for Reelify and are marked *Not yet reviewed*; the dialect checker only catches obvious
+  MSA markers. Review them in *Studio → Iraqi style guide* — approved/corrected lines are fed to every
+  Iraqi prompt.
+* Translated UI covers the new 2.0 screens (Choose, Message, Script, Film, camera, Preview, Quick
+  Adjust, Iraqi style guide, Templates); several older detail screens (advanced editor, trim,
+  branding, treatment editor) remain English.
+* Template customisation edits presets, colour, beauty and per-shot camera/instruction; it does not
+  let you change shot roles, media requirements or the number of shots (three is fixed by design).
+* Custom shot instructions are stored in one language (the Arabic text equals what you type).
+
+## Verification limits of this build environment (1.x)
 
 * **No physical Android device was available.** The camera (CameraX capture, focus, exposure, white
   balance, torch, 4K/60 fps, live beauty preview), the teleprompter UI, real hardware codecs and
