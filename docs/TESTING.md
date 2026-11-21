@@ -5,13 +5,14 @@ listed as such — nothing is reported as passed unless it ran.
 
 ## 1. JVM unit tests — `./gradlew :app:testDebugUnitTest`
 
-**Executed: 78 tests, 0 failures, 0 errors.**
+**Executed: 80 tests, 0 failures, 0 errors.** (78 + 2 audio-processor regression tests added after the on-device bug below.)
 
 | Suite | Tests | Covers |
 |---|---|---|
 | `ai.OpenAiClientTest` | 11 | Responses API request (model, `instructions`, strict `json_schema`, `store=false`, Bearer auth), output parsing, refusal, incomplete, malformed, empty output, missing key (no network call), 401 without key leakage, 429 retry→success, persistent 429, 5xx retry, 400 not retried, disconnect, timeout, model-availability test |
 | `ai.ReelDirectorTest` | 8 | Exactly three sections in Iraqi Arabic, stable section ids (model can't choose ids), prompt grounding (language code, 10 s sections, treatment profile, director prompt), repair round on invalid plan, persistent malformed → rejected, wrong-language output rejected, **section-only regeneration** keeps id/index and only targets section 2, wrong-index repair, schema strictness, deterministic EDL application |
 | `ai.DeepgramClientTest` | 9 | `nova-3`, `language=ar-IQ` / `en`, `keyterm` params, `Token` auth, binary upload, Arabic + English word timestamps/punctuation, empty transcript, empty audio not uploaded, 401, keyterm rejection fallback, network interruption, missing key |
+| `audio.AudioProcessorTest` | 2 | Voice chain / gain / limiter processors keep exact length and terminate under repeated `queueEndOfStream()` (regression) |
 | `audio.DspTest` | 8 | FFT round trip; spectral denoiser keeps length, cuts stationary noise by >50 % while keeping >70 % of a tone; bypass; limiter ceiling; high-pass; music fade + ducking envelope; normalization clamp; speech-aware trim (14 s take → ≤10 s ending on a pause) |
 | `captions.CaptionsTest` | 9 | Segmentation (Arabic `؟`, pauses), edit with same/different word counts, multi-word terminology correction (EN + AR), SRT format, **captions stay synced after a trim**, words trimmed away disappear, emphasis, script-estimated captions |
 | `data.ProjectRepositoryTest` (Robolectric + Room in-memory) | 5 | Create (3 stable sections) & reopen, plan application respects locks and keeps ids, **replacing section 2 leaves sections 1 & 3 and footage unchanged + undo**, atomic clip replacement + edit persistence, delete cascade + file cleanup hook |
@@ -28,8 +29,8 @@ listed as such — nothing is reported as passed unless it ran.
 | `ArabicRenderingTest.arabicCaptionLayoutIsRtlAndShaped` — real `StaticLayout` paragraph direction RTL, contextual shaping narrower than isolated glyphs, bundled font covers Arabic | **PASS** |
 | `ArabicRenderingTest.overlayRendersArabicCaptionPixels` — export overlay renderer draws Arabic caption pixels only during the caption window | **PASS** |
 | `ExportPipelineTest.export30sIraqiArabic` | **PASS** — 30.000 s, 900 frames @30 fps, H.264 + AAC 48 kHz, 360×640 portrait (rotation tag), captions & overlays rendered |
-| `ExportPipelineTest.export45sEnglish` | _RESULT_45_ |
-| `ExportPipelineTest.export60sEnglish` | _RESULT_60_ |
+| `ExportPipelineTest.export45sEnglish` | **PASS** — 45.000 s, 1350 frames, H.264 + AAC |
+| `ExportPipelineTest.export60sEnglish` | **PASS** — 60.000 s, 1800 frames, H.264 + AAC |
 
 The export tests generate media on the device (images → H.264 MP4 with a synthetic speech-like
 AAC track via Transformer), create a project, import/probe/trim clips (14 s‑style over-length
