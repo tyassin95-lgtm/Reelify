@@ -50,7 +50,7 @@ class CaptionsTest {
         assertThat(fixed.map { it.text }).containsExactly("try", "Aerolase,", "today").inOrder()
         assertThat(fixes).hasSize(1)
         val (ar, _) = TerminologyCorrector.correct(words("جهاز", "ايرو", "ليز"), terms, ReelLanguage.IRAQI_ARABIC)
-        assertThat(ar.map { it.text }).contains("إيروليز")
+        assertThat(ar.map { it.text }).contains("Aerolase")
     }
 
     @Test fun `srt output is well formed`() {

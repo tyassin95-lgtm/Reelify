@@ -2,6 +2,7 @@ package app.reelify.eval
 
 import app.reelify.core.content.DialectChecker
 import app.reelify.core.content.IraqiStyleGuide
+import app.reelify.core.content.MedicalGlossary
 import app.reelify.core.data.TreatmentSeed
 import app.reelify.core.model.ReelDuration
 import app.reelify.core.model.ReelLanguage
@@ -100,7 +101,9 @@ class CreativeEvalHarness {
                 w.meta.hookOptions.forEach { report.append("- hook (${it.style}): ${it.text}\n") }
                 w.scripts.forEach { s ->
                     val d = DialectChecker.analyze(s.spokenScript)
-                    report.append("\n**Shot ${s.index}** (${TimingEstimator().countWords(s.spokenScript)} words; formal markers: ${d.formalHits.joinToString().ifBlank { "none" }}): ${s.spokenScript}\n  headline: ${s.onScreenHeadline}\n")
+                    val medErrs = MedicalGlossary.validate(s.spokenScript, TreatmentSeed.terminology) +
+                        MedicalGlossary.validate(s.onScreenHeadline, TreatmentSeed.terminology)
+                    report.append("\n**Shot ${s.index}** (${TimingEstimator().countWords(s.spokenScript)} words; formal markers: ${d.formalHits.joinToString().ifBlank { "none" }}; medical-term violations: ${medErrs.size}): ${s.spokenScript}\n  headline: ${s.onScreenHeadline}\n")
                 }
                 val maxSim = w.meta.hookOptions.let { hs -> hs.indices.flatMap { i -> (i + 1 until hs.size).map { j -> ScriptValidator.similarity(hs[i].text, hs[j].text) } }.maxOrNull() ?: 0f }
                 report.append("\nAuto: hook similarity max %.2f · notes: %s\n\n| Relevance | Originality | Hook | Naturalness | Accuracy | Caution | Timing | Repetition | Clarity |\n|---|---|---|---|---|---|---|---|---|\n| | | | | | | | | |\n\n".format(maxSim, w.meta.qualityNotes.joinToString("; ").ifBlank { "none" }))

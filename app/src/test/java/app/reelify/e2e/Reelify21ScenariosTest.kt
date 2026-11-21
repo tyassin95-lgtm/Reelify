@@ -79,8 +79,8 @@ class Reelify21ScenariosTest {
             language = "ar-IQ",
             creativeAngle = "Photoacoustic physics vs layered ink depth",
             hookOptions = listOf(
-                HookDto("myth", "فكرة غلط: بيكوستار يمسح التاتو من جلسة وحدة."),
-                HookDto("curiosity", "ليش حبر التاتو ما يروح بيوم واحد رغم قوة البيكوستار؟"),
+                HookDto("myth", "فكرة غلط: PicoStar يمسح التاتو من جلسة وحدة."),
+                HookDto("curiosity", "ليش حبر التاتو ما يروح بيوم واحد رغم قوة PicoStar؟"),
                 HookDto("expert_insight", "شلون جسمك يصرف حبر التاتو بعد التكسير الصوتي؟"),
             ),
             sections = listOf(
@@ -141,13 +141,13 @@ class Reelify21ScenariosTest {
             creativeAngle = "Focused ultrasound clarity + neocollagenesis timeline",
             hookOptions = listOf(
                 HookDto("question", "سؤال ينسأل كل صيف: هل CFU Èlife ليزر ولازم ننتظر الشتا؟"),
-                HookDto("curiosity", "ليش تكدر تسوي جلسة الشد بـ CFU بعز الصيف بدون ما تتقشر بشرتك؟"),
-                HookDto("expert_insight", "فرق مهم بين الهايفو وأجهزة الليزر بالعيادة."),
+                HookDto("curiosity", "ليش تكدر تسوي جلسة الشد بـ CFU Èlife بعز الصيف بدون ما تتقشر بشرتك؟"),
+                HookDto("expert_insight", "فرق مهم بين HIFU وأجهزة الليزر بالعيادة."),
             ),
             sections = listOf(
                 ScriptSectionDto(1, "ناس هواي يأجلون جلسة الشد لأن عبالهم كل أجهزة العيادة ليزر يحرّك سطح البشرة.", "مو ليزر", listOf("ليزر")),
-                ScriptSectionDto(2, "جهاز CFU Èlife يشتغل بالموجات فوق الصوتية المركّزة HIFU مو بالليزر، مع تقنية Centerless وتبريد ACE يوصل لأعماق 1.5 و3.0 و4.5 ملم بدون جرح للسطح.", "ألتراساوند مو ليزر", listOf("HIFU")),
-                ScriptSectionDto(3, "النتيجة ما تخلص بنفس اللحظة؛ بناء الكولاجين يتطور تدريجياً خلال شهرين إلى ثلاثة حسب تقييم الترهل.", "نتيجة تدريجية", listOf("الكولاجين")),
+                ScriptSectionDto(2, "تقنية CFU Èlife تشتغل بـ HIFU مو بالليزر، مع نظام Centerless وتبريد ACE يوصل لأعماق 1.5 و3.0 و4.5 ملم بدون جرح Epidermis.", "HIFU مو ليزر", listOf("HIFU")),
+                ScriptSectionDto(3, "النتيجة ما تخلص بنفس اللحظة؛ بناء Collagen يتطور تدريجياً خلال شهرين إلى ثلاثة حسب التقييم.", "نتيجة تدريجية", listOf("Collagen")),
             ),
             ctaStyle = "comment_question",
             medicalReview = emptyList(),

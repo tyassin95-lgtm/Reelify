@@ -70,4 +70,25 @@ class ArabicRenderingTest {
         val fixed = StaticLayout.Builder.obtain(text, 0, text.length, paint, 900).setTextDirection(dir).build()
         assertThat(fixed.getParagraphDirection(0)).isEqualTo(Layout.DIR_RIGHT_TO_LEFT)
     }
+
+    /** Reelify 2.2: mixed Iraqi Arabic + English medical terminology must stay RTL-dominant and cleanly shaped. */
+    @Test fun mixedIraqiArabicAndEnglishMedicalTerminologyStaysRtlAndShaped() {
+        val mixedLines = listOf(
+            "PicoStar يشتغل بـ Picosecond laser على موجتين 1064 nm و532 nm لعلاج Melasma بدون ما يجرح Epidermis.",
+            "جهاز CFU Èlife مو ليزر، يشتغل بـ HIFU على طبقة SMAS لتنشيط Collagen.",
+        )
+        val paint = TextPaint().apply { typeface = fonts.caption(CaptionFont.SANS_BOLD, arabic = true); textSize = 56f }
+        mixedLines.forEach { text ->
+            assertThat(app.reelify.core.content.GeneratedContentNormalizer.isArabicDominant(text)).isTrue()
+            val dir = TextDirectionHeuristics.RTL
+            val layout = StaticLayout.Builder.obtain(text, 0, text.length, paint, 900)
+                .setTextDirection(dir)
+                .setAlignment(Layout.Alignment.ALIGN_CENTER)
+                .build()
+            assertThat(layout.getParagraphDirection(0)).isEqualTo(Layout.DIR_RIGHT_TO_LEFT)
+            assertThat(layout.lineCount).isAtLeast(1)
+        }
+        val arabicWord = "البشرة"
+        assertThat(paint.measureText(arabicWord)).isLessThan(arabicWord.sumOf { paint.measureText(it.toString()).toDouble() }.toFloat())
+    }
 }

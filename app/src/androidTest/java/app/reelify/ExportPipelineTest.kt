@@ -35,6 +35,7 @@ import app.reelify.core.template.ProductionPlanner
 import app.reelify.core.template.SectionScript
 import app.reelify.core.model.ScriptMeta
 import app.reelify.core.template.BuiltInTemplates
+import app.reelify.feature.common.TrimPlayerController
 import org.junit.runner.RunWith
 import java.io.File
 
@@ -158,5 +159,33 @@ class ExportPipelineTest {
             captionsExpected = true, captionFramesDrawn = built.overlayRenderer!!.captionRenders, overlaysExpected = true, overlayFramesDrawn = built.overlayRenderer!!.overlayRenders)
         android.util.Log.w("ReelifyE2E", report.summary.joinToString(" | "))
         assertThat(report.ok).isTrue()
+    }
+
+    /** Reelify 2.2: effect-free core TrimPlayerController loads, discovers duration, seeks cleanly, and releases. */
+    @Test fun effectFreeTrimPlayerLoadsDiscoversDurationAndSeeksCleanly() = runBlocking {
+        val dir = File(ctx.cacheDir, "fixtures_trim_e2e").apply { mkdirs() }
+        val clipFile = FixtureMedia.clip(ctx, dir, "trim_probe", Color.rgb(40, 70, 90), 4.0)
+        val inst = InstrumentationRegistry.getInstrumentation()
+        lateinit var controller: TrimPlayerController
+        inst.runOnMainSync {
+            controller = TrimPlayerController(ctx)
+            controller.load(Uri.fromFile(clipFile), startPositionMs = 500L, volume = 1f, play = false)
+        }
+        try {
+            val deadline = android.os.SystemClock.elapsedRealtime() + 15_000L
+            while (android.os.SystemClock.elapsedRealtime() < deadline && !controller.ready.value && controller.error.value == null) {
+                kotlinx.coroutines.delay(50)
+            }
+            assertThat(controller.error.value).isNull()
+            assertThat(controller.isEffectFree).isTrue()
+            assertThat(controller.ready.value).isTrue()
+            assertThat(controller.discoveredDurationMs.value).isAtLeast(3_000L)
+            inst.runOnMainSync {
+                controller.seek(1_500L)
+                assertThat(controller.position()).isAtLeast(0L)
+            }
+        } finally {
+            inst.runOnMainSync { controller.release() }
+        }
     }
 }

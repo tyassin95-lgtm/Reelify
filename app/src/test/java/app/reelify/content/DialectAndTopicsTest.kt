@@ -95,7 +95,7 @@ class DialectAndTopicsTest {
         val en = TopicLibrary.suggestions(aerolase, "expert_explains", emptyList(), false, 50).first { it.idea.key == "aero_ee_01" }
         val ar = TopicLibrary.suggestions(aerolase, "expert_explains", emptyList(), true, 50).first { it.idea.key == "aero_ee_01" }
         assertThat(en.title).contains("Aerolase")
-        assertThat(ar.title).contains("أيروليز")
+        assertThat(ar.title).contains("Aerolase")
 
         val custom = aerolase.copy(id = "custom_demo", name = "ClinicLaser", arabicName = "ليزر خاص", linkedReferenceProfileId = null)
         val cEn = TopicLibrary.suggestions(custom, "myth_buster", emptyList(), false, 50).first { it.idea.key == "misconception" }
