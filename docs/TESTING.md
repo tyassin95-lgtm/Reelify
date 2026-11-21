@@ -27,7 +27,7 @@ listed as such — nothing is reported as passed unless it ran.
 |---|---|
 | `ArabicRenderingTest.arabicCaptionLayoutIsRtlAndShaped` — real `StaticLayout` paragraph direction RTL, contextual shaping narrower than isolated glyphs, bundled font covers Arabic | **PASS** |
 | `ArabicRenderingTest.overlayRendersArabicCaptionPixels` — export overlay renderer draws Arabic caption pixels only during the caption window | **PASS** |
-| `ExportPipelineTest.export30sIraqiArabic` | _RESULT_30_ |
+| `ExportPipelineTest.export30sIraqiArabic` | **PASS** — 30.000 s, 900 frames @30 fps, H.264 + AAC 48 kHz, 360×640 portrait (rotation tag), captions & overlays rendered |
 | `ExportPipelineTest.export45sEnglish` | _RESULT_45_ |
 | `ExportPipelineTest.export60sEnglish` | _RESULT_60_ |
 
@@ -37,6 +37,24 @@ takes), add script captions, branding, music, SFX, crossfades, colour and beauty
 the real `CompositionFactory` + Transformer, and validate the file with `ExportValidator`
 (dimensions, duration ±1 frame, AAC track, decodable frame, caption/overlay render counters). On
 emulators they render at 360×640; on a physical phone at 1080×1920.
+
+### Bugs found and fixed by the on-device runs
+
+1. **Infinite audio tail (critical).** Media3's `AudioProcessingPipeline` calls
+   `queueEndOfStream()` repeatedly until a processor reports ended; the denoiser chain re-emitted
+   its latency tail on every call and never ended, hanging any export with dialogue at ~83 %.
+   Fixed (idempotent flush) and covered by `AudioProcessorTest`.
+2. **First-frame latency vs. muxer watchdog.** Under software GL the first frame took >25 s,
+   tripping Transformer's default watchdog. The watchdog is now configurable (60 s in the app).
+
+### Rendered output (frames from the 30 s Iraqi-Arabic test reel at 1.5/8.5/10.1/15/26/29.3 s)
+
+![frames](images/e2e_30s_iraqi_arabic_frames.png)
+
+Shaped right-to-left Arabic captions with active-word highlight, intro title, lower third,
+section changes at exactly 10 s / 20 s, vignette/colour grade and the closing CTA card.
+(The "s1/s2/s3" labels and discs belong to the generated test images.) Independent `ffprobe`:
+`h264 900 frames 30/1 fps, duration 30.000000; aac 48000 Hz`.
 
 ## 3. Not executed here (requires hardware or credentials)
 
