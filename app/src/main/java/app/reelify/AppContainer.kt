@@ -59,6 +59,7 @@ class AppContainer(context: Context) {
     val scriptWriter = app.reelify.integration.openai.ScriptWriter(openAi, timing = { timingState.value })
     val templates = app.reelify.core.template.TemplateRepository(database.contentDao())
     val content = app.reelify.core.content.ContentRepository(database.contentDao())
+    val creationSessions = java.util.concurrent.ConcurrentHashMap<String, app.reelify.feature.flow.CreationDraftSession>()
 
     val probe = MediaProbe(appContext)
     val thumbnails = Thumbnails(appContext)

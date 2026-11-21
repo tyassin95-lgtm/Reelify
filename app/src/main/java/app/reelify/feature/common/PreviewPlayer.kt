@@ -29,9 +29,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 
 /**
- * Reliable single-clip player for TrimScreen using standard Media3 [ExoPlayer].
- * Falls back automatically to unfiltered playback if GPU effects fail on the device,
- * and never crashes on bad media or player lifecycle transitions.
+ * Effect-free single-clip core trimmer player backed by plain Media3 [ExoPlayer].
+ *
+ * By design, standard trimming NEVER attaches Media3 GL video effects (`Presentation`, beauty
+ * shaders, or color LUTs) to `ExoPlayer`, eliminating OpenGL surface/effect initialization crashes
+ * on all devices. Framing preview is handled cleanly via Compose `graphicsLayer`, and optional
+ * GPU filter preview can be enabled separately behind a guarded opt-in toggle.
  */
 class TrimPlayerController(context: Context) {
     private val appContext = context.applicationContext
@@ -49,92 +52,149 @@ class TrimPlayerController(context: Context) {
     private val _ready = MutableStateFlow(false)
     val ready: StateFlow<Boolean> = _ready.asStateFlow()
 
+    private val _discoveredDurationMs = MutableStateFlow(0L)
+    val discoveredDurationMs: StateFlow<Long> = _discoveredDurationMs.asStateFlow()
+
+    /** True when the active session has attached zero Media3 GL video effects (default mode). */
+    var isEffectFree: Boolean = true
+        private set
+
     var durationMs: Long = 0L
         private set
 
     private var lastUri: Uri? = null
     private var lastStartMs: Long = 0L
     private var lastVolume: Float = 1f
-    private var activeEffects: List<Effect> = emptyList()
     private var effectsSupported: Boolean = true
     private var released: Boolean = false
 
-    init {
-        player.addListener(object : Player.Listener {
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                _playing.value = isPlaying
-            }
+    private val listener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            _playing.value = isPlaying
+        }
 
-            override fun onPlayerError(error: PlaybackException) {
-                Log.e(TAG, "Trim ExoPlayer error code=${error.errorCodeName}", error)
-                if (activeEffects.isNotEmpty() && effectsSupported) {
-                    // Retry cleanly without GPU effects so trimming never breaks.
-                    effectsSupported = false
-                    activeEffects = emptyList()
-                    _notice.value = "Live filter preview isn't supported for this clip; trimming still works and beauty applies at render."
-                    lastUri?.let { uri ->
-                        loadInternal(uri, player.currentPosition.coerceAtLeast(lastStartMs), lastVolume, emptyList(), play = false)
-                    }
-                    return
+        override fun onPlayerError(error: PlaybackException) {
+            Log.e(TAG, "Trim ExoPlayer error code=${error.errorCodeName}", error)
+            if (!isEffectFree && effectsSupported) {
+                // Immediately revert to effect-free plain ExoPlayer if optional GL preview failed.
+                effectsSupported = false
+                isEffectFree = true
+                _notice.value = "Live filter preview isn't supported for this clip; using clean trim playback (effects apply at export)."
+                lastUri?.let { uri ->
+                    loadEffectFreeInternal(uri, position().coerceAtLeast(lastStartMs), lastVolume, play = false)
                 }
-                _error.value = "Couldn't play this clip (${error.errorCodeName}). You can replace it or return safely."
+                return
             }
+            _error.value = "Couldn't play this clip (${error.errorCodeName}). You can replace it or return safely."
+        }
 
-            override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_READY) {
-                    _ready.value = true
-                    durationMs = player.duration.takeIf { it > 0 } ?: 0L
+        override fun onPlaybackStateChanged(state: Int) {
+            if (state == Player.STATE_READY) {
+                _ready.value = true
+                val probed = runCatching { player.duration }.getOrDefault(0L)
+                    .takeIf { it > 0L && it != androidx.media3.common.C.TIME_UNSET } ?: 0L
+                if (probed > 0L) {
+                    durationMs = probed
+                    _discoveredDurationMs.value = probed
                 }
             }
-        })
+        }
     }
 
+    init {
+        player.addListener(listener)
+    }
+
+    /** Loads media into plain effect-free ExoPlayer (no GL effects pipeline initialized). */
     fun load(
         uri: Uri,
         startPositionMs: Long = 0L,
         volume: Float = 1f,
-        effects: List<Effect> = emptyList(),
         play: Boolean = false,
     ) {
         if (released) return
         lastUri = uri
         lastStartMs = startPositionMs.coerceAtLeast(0L)
         lastVolume = volume.coerceIn(0f, 1f)
-        val useEffects = if (effectsSupported) effects else emptyList()
-        loadInternal(uri, lastStartMs, lastVolume, useEffects, play)
+        loadEffectFreeInternal(uri, lastStartMs, lastVolume, play)
     }
 
-    private fun loadInternal(
+    /**
+     * Optional secondary GL preview path (never called during default trimming). Falls back
+     * immediately to effect-free playback if effect creation or player attachment throws.
+     */
+    fun applyOptionalPreviewEffects(
         uri: Uri,
         startPositionMs: Long,
         volume: Float,
-        effects: List<Effect>,
+        effectsProvider: () -> List<Effect>,
+    ) {
+        if (released) return
+        lastUri = uri
+        lastStartMs = startPositionMs.coerceAtLeast(0L)
+        lastVolume = volume.coerceIn(0f, 1f)
+        if (!effectsSupported) {
+            loadEffectFreeInternal(uri, lastStartMs, lastVolume, play = false)
+            return
+        }
+        val builtEffects = runCatching(effectsProvider).getOrElse { t ->
+            Log.w(TAG, "Optional trim effect creation failed; staying effect-free", t)
+            effectsSupported = false
+            _notice.value = "Live filter preview isn't available on this device; beauty still applies at export."
+            loadEffectFreeInternal(uri, lastStartMs, lastVolume, play = false)
+            return
+        }
+        if (builtEffects.isEmpty()) {
+            loadEffectFreeInternal(uri, lastStartMs, lastVolume, play = false)
+            return
+        }
+        _error.value = null
+        _ready.value = false
+        runCatching {
+            player.setVideoEffects(builtEffects)
+            isEffectFree = false
+            player.volume = lastVolume
+            player.setMediaItem(MediaItem.fromUri(uri), lastStartMs)
+            player.prepare()
+            player.playWhenReady = false
+        }.onFailure { t ->
+            Log.w(TAG, "Optional trim ExoPlayer effects failed; reverting to effect-free playback", t)
+            effectsSupported = false
+            isEffectFree = true
+            _notice.value = "Live filter preview isn't supported for this clip; using clean trim playback."
+            loadEffectFreeInternal(uri, lastStartMs, lastVolume, play = false)
+        }
+    }
+
+    private fun loadEffectFreeInternal(
+        uri: Uri,
+        startPositionMs: Long,
+        volume: Float,
         play: Boolean,
     ) {
         _error.value = null
         _ready.value = false
-        activeEffects = effects
+        isEffectFree = true
         runCatching {
-            if (effects.isNotEmpty()) {
-                runCatching { player.setVideoEffects(effects) }
-                    .onFailure { t ->
-                        Log.w(TAG, "Video effects unsupported in trim ExoPlayer; falling back to unfiltered preview", t)
-                        effectsSupported = false
-                        activeEffects = emptyList()
-                        _notice.value = "Live filter preview isn't supported for this clip; trimming still works."
-                        runCatching { player.setVideoEffects(emptyList()) }
-                    }
-            } else {
-                runCatching { player.setVideoEffects(emptyList()) }
-            }
+            // Note: do NOT call setVideoEffects() in default mode so Media3 never spins up VideoFrameProcessor.
             player.volume = volume.coerceIn(0f, 1f)
             player.setMediaItem(MediaItem.fromUri(uri), startPositionMs.coerceAtLeast(0L))
             player.prepare()
             player.playWhenReady = play
         }.onFailure { t ->
-            Log.e(TAG, "Failed to load clip in TrimPlayerController", t)
+            Log.e(TAG, "Failed to load clip in effect-free TrimPlayerController", t)
             _error.value = "Couldn't open this clip for trimming (${t.message ?: t.javaClass.simpleName})."
         }
+    }
+
+    fun previewSelection(startMs: Long) {
+        if (released) return
+        runCatching {
+            val safeStart = startMs.coerceAtLeast(0L)
+            lastStartMs = safeStart
+            player.seekTo(safeStart)
+            player.play()
+        }.onFailure { Log.e(TAG, "Preview selection failed", it) }
     }
 
     fun setVolume(volume: Float) {
@@ -168,7 +228,10 @@ class TrimPlayerController(context: Context) {
     fun release() {
         if (released) return
         released = true
-        runCatching { player.release() }.onFailure { Log.w(TAG, "Error releasing trim ExoPlayer", it) }
+        runCatching {
+            player.removeListener(listener)
+            player.release()
+        }.onFailure { Log.w(TAG, "Error releasing trim ExoPlayer", it) }
     }
 
     companion object {

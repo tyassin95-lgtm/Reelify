@@ -5,6 +5,7 @@ import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -97,12 +98,14 @@ class AudioAnalyzer(private val context: Context) {
                 }
             }
             Envelope(hopMs, out.toFloatArray(), if (firstOutTimeUs >= 0) firstOutTimeUs / 1000 else startMs)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             null
         } finally {
             runCatching { codec?.stop() }
             runCatching { codec?.release() }
-            extractor.release()
+            runCatching { extractor.release() }
         }
     }
 }

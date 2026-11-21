@@ -4,8 +4,13 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.reelify.AppContainer
+import app.reelify.core.content.ClinicalKnowledgeManager
+import app.reelify.core.content.CreativeHistoryRecord
+import app.reelify.core.content.CreativeTopic
 import app.reelify.core.content.FactualBriefBuilder
+import app.reelify.core.content.IdeaGenerationMode
 import app.reelify.core.content.TopicLibrary
+import app.reelify.core.content.TopicOrigin
 import app.reelify.core.content.TopicSuggestion
 import app.reelify.core.content.TopicUiCategory
 import app.reelify.core.content.TreatmentKnowledgeCatalog
@@ -24,15 +29,17 @@ import app.reelify.core.model.ReelConcept
 import app.reelify.core.model.ReelDuration
 import app.reelify.core.model.ReelLanguage
 import app.reelify.core.model.ReelSection
+import app.reelify.core.model.ReelStyle
 import app.reelify.core.model.SocialPlatform
 import app.reelify.core.model.Treatment
 import app.reelify.core.policy.ClaimChecker
 import app.reelify.core.template.MediaRequirement
+import app.reelify.core.template.ProductionMode
 import app.reelify.core.template.ProductionPlanner
 import app.reelify.core.template.ReelTemplate
 import app.reelify.core.template.SectionScript
 import app.reelify.core.template.ShotRole
-import app.reelify.integration.openai.FreshIdea
+import app.reelify.core.util.Ids
 import app.reelify.integration.openai.ScriptAction
 import app.reelify.integration.openai.ScriptContext
 import app.reelify.integration.openai.ScriptValidator
@@ -43,12 +50,20 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** Builds the scriptwriter context for a template project. */
-suspend fun AppContainer.scriptContext(p: Project, topicTitle: String, brief: String = "", idea: String = ""): ScriptContext {
+/** Builds the scriptwriter context preserving full selected CreativeTopic & local creative history. */
+suspend fun AppContainer.scriptContext(
+    p: Project,
+    topicTitle: String,
+    brief: String = "",
+    idea: String = "",
+    selectedTopic: CreativeTopic? = null,
+    recentHistory: List<CreativeHistoryRecord> = emptyList(),
+): ScriptContext {
     val template = p.template ?: error("Not a template project")
     val treatment = library.getTreatment(p.treatmentId)
     val pack = TreatmentKnowledgeCatalog.packFor(
@@ -57,24 +72,39 @@ suspend fun AppContainer.scriptContext(p: Project, topicTitle: String, brief: St
         needsConfiguration = treatment?.needsConfiguration == true,
     )
     val arabic = p.language == ReelLanguage.IRAQI_ARABIC
-    val matchedTopic = TopicLibrary.topicsFor(treatment, template.id)
+    val matchedTopic = selectedTopic?.let { sel ->
+        TopicLibrary.topicsFor(treatment, template.id).firstOrNull { it.key == sel.id }
+    } ?: TopicLibrary.topicsFor(treatment, template.id)
         .firstOrNull { it.title.en == topicTitle || it.title.ar == topicTitle }
+    val resolvedTopic = selectedTopic ?: p.script?.creativeTopic
     val factualBrief = FactualBriefBuilder.build(
         treatment = treatment,
         pack = pack,
         topic = matchedTopic,
+        selectedTopic = resolvedTopic,
         topicTitle = topicTitle,
         topicBrief = brief,
         userIdea = idea,
         arabic = arabic,
     )
+    val history = recentHistory.ifEmpty { content.recentCreativeHistory(p.treatmentId) }
     return ScriptContext(
-        language = p.language, duration = p.duration, template = template,
-        treatment = treatment, terminology = library.terminology(), brand = settings.currentBrand(),
-        topicTitle = topicTitle, topicBrief = brief, userIdea = idea, concept = p.concept,
-        recentHooks = content.recentHooks(), recentTopics = content.recentTopicKeys(p.treatmentId),
+        language = p.language,
+        duration = p.duration,
+        template = template,
+        treatment = treatment,
+        terminology = library.terminology(),
+        brand = settings.currentBrand(),
+        topicTitle = topicTitle,
+        topicBrief = brief,
+        userIdea = idea,
+        concept = p.concept,
+        recentHooks = content.recentHooks(),
+        recentTopics = content.recentTopicKeys(p.treatmentId),
         examples = if (arabic) content.iraqiExamplesForPrompt() else emptyList(),
         factualBrief = factualBrief,
+        selectedTopic = resolvedTopic,
+        recentHistory = history,
     )
 }
 
@@ -86,12 +116,26 @@ class ChooseReelViewModel(private val c: AppContainer) : ViewModel() {
 
     suspend fun last(): LastReelChoice = c.settings.current().lastChoice
 
-    suspend fun create(language: ReelLanguage, treatment: Treatment, duration: ReelDuration, template: ReelTemplate, arabicUi: Boolean): Project {
+    /**
+     * Starts an EPHEMERAL creation session without creating a persistent Room project yet.
+     * Preferences are remembered for convenience, while Room stays clean until script success.
+     */
+    suspend fun startSession(
+        language: ReelLanguage,
+        treatment: Treatment,
+        duration: ReelDuration,
+        template: ReelTemplate,
+    ): CreationDraftSession {
         c.settings.update { it.copy(lastChoice = LastReelChoice(treatment.id, language, duration.totalMs, template.id)) }
-        val s = c.settings.current()
-        val base = EditSettings(captions = CaptionSettings(), quality = s.exportQuality)
-        val name = if (language == ReelLanguage.IRAQI_ARABIC) treatment.arabicName.ifBlank { treatment.name } else treatment.name
-        return c.projects.createFromTemplate(language, treatment.id, duration, template, "$name · ${template.name.resolve(arabicUi)}", base)
+        val session = CreationDraftSession(
+            sessionId = Ids.new(),
+            treatmentId = treatment.id,
+            templateId = template.id,
+            language = language,
+            duration = duration,
+        )
+        c.creationSessions[session.sessionId] = session
+        return session
     }
 }
 
@@ -100,34 +144,101 @@ class ChooseReelViewModel(private val c: AppContainer) : ViewModel() {
 data class MessageUi(
     val project: Project? = null,
     val treatment: Treatment? = null,
+    val isEphemeralSession: Boolean = true,
     val suggestions: List<TopicSuggestion> = emptyList(),
     val selectedCategory: TopicUiCategory = TopicUiCategory.ALL,
     val visibleCount: Int = 8,
-    val ideas: List<FreshIdea> = emptyList(),
+    val ideas: List<CreativeTopic> = emptyList(),
+    val savedIdeas: List<CreativeTopic> = emptyList(),
     val ideasLoading: Boolean = false,
     val generating: String? = null,
     val generatingKey: String? = null,
     val error: String? = null,
+    val notice: String? = null,
     val concept: ReelConcept = ReelConcept(),
     val profileReady: Boolean = false,
 )
 
-class MessageViewModel(private val c: AppContainer, private val pid: String, private val arabicUi: Boolean) : ViewModel() {
+class MessageViewModel(
+    private val c: AppContainer,
+    private val pidOrDraftKey: String,
+    private val arabicUi: Boolean,
+    private val fallbackTreatmentId: String = "",
+    private val fallbackTemplateId: String = "",
+    private val fallbackLangCode: String = "",
+    private val fallbackDurationMs: Long = 30_000L,
+) : ViewModel() {
     private val _ui = MutableStateFlow(MessageUi())
     val ui = _ui.asStateFlow()
     private var job: Job? = null
     private var saveJob: Job? = null
     private var recentKeys: List<String> = emptyList()
+    private var ephemeralSession: CreationDraftSession? = null
+    private var persistedProjectId: String? = null
 
     init {
         viewModelScope.launch {
-            val p = c.projects.getProject(pid) ?: return@launch
+            val isDraft = pidOrDraftKey.startsWith("draft_")
+            var project: Project? = null
+            if (isDraft) {
+                val sid = pidOrDraftKey.removePrefix("draft_")
+                val existing = c.creationSessions[sid]
+                val session = existing ?: CreationDraftSession(
+                    sessionId = sid,
+                    treatmentId = fallbackTreatmentId.ifBlank { "aerolase" },
+                    templateId = fallbackTemplateId.ifBlank { "expert_explains" },
+                    language = ReelLanguage.fromCode(fallbackLangCode.ifBlank { c.settings.current().defaultReelLanguage.code }),
+                    duration = ReelDuration.fromMs(fallbackDurationMs),
+                ).also { c.creationSessions[sid] = it }
+
+                if (session.persistedProjectId != null) {
+                    persistedProjectId = session.persistedProjectId
+                    project = c.projects.getProject(session.persistedProjectId)
+                }
+                if (project == null) {
+                    ephemeralSession = session
+                    val tpl = c.templates.get(session.templateId) ?: app.reelify.core.template.BuiltInTemplates.EXPERT_EXPLAINS
+                    val s = c.settings.current()
+                    val t = c.library.getTreatment(session.treatmentId)
+                    val titlePrefix = if (session.language == ReelLanguage.IRAQI_ARABIC) t?.arabicName.orEmpty().ifBlank { t?.name.orEmpty() } else t?.name.orEmpty()
+                    project = Project(
+                        id = pidOrDraftKey,
+                        title = "$titlePrefix · ${tpl.name.resolve(arabicUi)}",
+                        createdAt = 0L,
+                        updatedAt = 0L,
+                        language = session.language,
+                        treatmentId = session.treatmentId,
+                        duration = session.duration,
+                        style = ReelStyle.EDUCATIONAL,
+                        concept = session.concept,
+                        mode = ProductionMode.TEMPLATE,
+                        template = tpl,
+                        edit = ProductionPlanner.templateEdit(tpl, session.duration, EditSettings(captions = CaptionSettings(), quality = s.exportQuality)),
+                    )
+                }
+            } else {
+                persistedProjectId = pidOrDraftKey
+                project = c.projects.getProject(pidOrDraftKey)
+            }
+
+            val p = project ?: return@launch
             val t = c.library.getTreatment(p.treatmentId)
             recentKeys = c.content.recentTopicKeys(p.treatmentId)
             val arabicTitles = p.language == ReelLanguage.IRAQI_ARABIC
             _ui.update {
-                it.copy(project = p, treatment = t, concept = p.concept, profileReady = TopicLibrary.profileReady(t),
-                    suggestions = TopicLibrary.suggestions(t, p.template?.id, recentKeys, arabicTitles, uiCategory = it.selectedCategory))
+                it.copy(
+                    project = p,
+                    treatment = t,
+                    isEphemeralSession = persistedProjectId == null,
+                    concept = p.concept,
+                    profileReady = TopicLibrary.profileReady(t),
+                    suggestions = TopicLibrary.suggestions(t, p.template?.id, recentKeys, arabicTitles, uiCategory = it.selectedCategory),
+                )
+            }
+            launch {
+                c.content.observeSavedIdeas(p.treatmentId).collect { saved ->
+                    _ui.update { st -> st.copy(savedIdeas = saved.filter { it.templateId == p.template?.id }) }
+                }
             }
         }
     }
@@ -177,56 +288,157 @@ class MessageViewModel(private val c: AppContainer, private val pid: String, pri
     }
 
     fun editConcept(t: (ReelConcept) -> ReelConcept) {
-        _ui.update { it.copy(concept = t(it.concept)) }
-        saveJob?.cancel()
-        saveJob = viewModelScope.launch { delay(400); c.projects.updateConcept(pid, _ui.value.concept) }
-    }
-
-    fun surpriseMe() {
-        job?.cancel()
-        job = viewModelScope.launch {
-            _ui.update { it.copy(ideasLoading = true, error = null) }
-            try {
-                val p = c.projects.getProject(pid)!!
-                val ctx = c.scriptContext(p, topicTitle = "(propose fresh ideas)")
-                _ui.update { it.copy(ideas = c.scriptWriter.ideas(ctx), ideasLoading = false) }
-            } catch (e: CancellationException) { _ui.update { it.copy(ideasLoading = false) }; throw e }
-            catch (e: Exception) { _ui.update { it.copy(ideasLoading = false, error = e.message ?: "Couldn't get ideas") } }
+        val next = t(_ui.value.concept)
+        _ui.update { it.copy(concept = next, project = it.project?.copy(concept = next)) }
+        ephemeralSession?.let { s ->
+            val updated = s.copy(concept = next)
+            ephemeralSession = updated
+            c.creationSessions[updated.sessionId] = updated
+        }
+        val realPid = persistedProjectId
+        if (realPid != null) {
+            saveJob?.cancel()
+            saveJob = viewModelScope.launch { delay(350); c.projects.updateConcept(realPid, next) }
         }
     }
 
-    fun useTopic(s: TopicSuggestion, onDone: () -> Unit) = generate(s.title, s.idea.brief, "", s.idea.key, null, onDone)
-    fun useIdea(i: FreshIdea, onDone: () -> Unit) = generate(i.title, i.angle, "", "ai:" + i.title.take(40), i.hook, onDone)
-    fun useOwnIdea(text: String, onDone: () -> Unit) { if (text.isNotBlank()) generate(text.take(120), "", text, "own", null, onDone) }
-
-    private fun generate(title: String, brief: String, idea: String, key: String, hook: String?, onDone: () -> Unit) {
+    fun surpriseMe(seedTopic: CreativeTopic? = null, mode: IdeaGenerationMode = IdeaGenerationMode.FRESH) {
+        val snapshot = _ui.value.project ?: return
         job?.cancel()
         job = viewModelScope.launch {
-            _ui.update { it.copy(generating = title, generatingKey = key, error = null) }
+            _ui.update { it.copy(ideasLoading = true, error = null, notice = null) }
             try {
-                c.projects.updateConcept(pid, _ui.value.concept.copy(summary = idea.ifBlank { title }))
-                val p = c.projects.getProject(pid)!!
-                val ctx = c.scriptContext(p, title, brief, idea)
-                val written = c.scriptWriter.generate(ctx, key, hook)
-                val withNotes = if (c.settings.current().aiEditorialReview) {
+                val p = persistedProjectId?.let { c.projects.getProject(it) } ?: snapshot
+                val history = c.content.recentCreativeHistory(p.treatmentId)
+                val ctx = c.scriptContext(
+                    p = p.copy(concept = _ui.value.concept),
+                    topicTitle = seedTopic?.title ?: "",
+                    selectedTopic = seedTopic,
+                    recentHistory = history,
+                )
+                val fresh = c.scriptWriter.ideas(ctx, seedTopic = seedTopic, mode = mode)
+                _ui.update { it.copy(ideas = fresh, ideasLoading = false) }
+            } catch (e: CancellationException) {
+                _ui.update { it.copy(ideasLoading = false) }
+                throw e
+            } catch (e: Exception) {
+                _ui.update { it.copy(ideasLoading = false, error = e.message ?: "Couldn't generate fresh clinical ideas") }
+            }
+        }
+    }
+
+    fun saveIdeaForLater(idea: CreativeTopic) {
+        viewModelScope.launch {
+            c.content.saveIdeaForLater(idea)
+            _ui.update { it.copy(notice = "Saved '${idea.title}' for later") }
+        }
+    }
+
+    fun removeSavedIdea(idea: CreativeTopic) {
+        viewModelScope.launch {
+            c.content.removeSavedIdea(idea.treatmentId, idea.id)
+        }
+    }
+
+    fun useTopic(s: TopicSuggestion, onDone: (String) -> Unit) {
+        val state = _ui.value
+        val p = state.project ?: return
+        val tplId = p.template?.id ?: return
+        val tr = state.treatment
+        val pack = TreatmentKnowledgeCatalog.packFor(tr?.id ?: p.treatmentId, tr?.linkedReferenceProfileId, tr?.needsConfiguration == true)
+        val creative = CreativeTopic.fromCuratedSuggestion(s, tr, tplId, pack, p.language == ReelLanguage.IRAQI_ARABIC)
+        generate(creative, onDone)
+    }
+
+    fun useIdea(idea: CreativeTopic, onDone: (String) -> Unit) = generate(idea, onDone)
+
+    fun useOwnIdea(text: String, onDone: (String) -> Unit) {
+        val state = _ui.value
+        val p = state.project ?: return
+        val tplId = p.template?.id ?: return
+        if (text.isBlank()) return
+        val creative = CreativeTopic.fromUserInput(state.treatment, tplId, text, p.language == ReelLanguage.IRAQI_ARABIC)
+        generate(creative, onDone)
+    }
+
+    private fun generate(topic: CreativeTopic, onDone: (String) -> Unit) {
+        val snapshot = _ui.value.project ?: return
+        val tpl = snapshot.template ?: return
+        job?.cancel()
+        job = viewModelScope.launch {
+            _ui.update { it.copy(generating = topic.title, generatingKey = topic.id, error = null, notice = null) }
+            try {
+                val updatedConcept = _ui.value.concept.copy(summary = topic.title)
+                val workingProject = (persistedProjectId?.let { c.projects.getProject(it) } ?: snapshot).copy(concept = updatedConcept)
+                val history = c.content.recentCreativeHistory(workingProject.treatmentId)
+                val ctx = c.scriptContext(
+                    p = workingProject,
+                    topicTitle = topic.title,
+                    brief = topic.educationalObjective,
+                    idea = if (topic.origin == TopicOrigin.USER) topic.title else "",
+                    selectedTopic = topic,
+                    recentHistory = history,
+                )
+                val preferredHook = if (topic.origin == TopicOrigin.AI && topic.hookAngle.isNotBlank()) topic.hookAngle else null
+                val written = c.scriptWriter.generate(ctx, topic.id, preferredHook)
+
+                val finalMeta = if (c.settings.current().aiEditorialReview) {
                     runCatching {
-                        val tmp = ProductionPlanner.mergeScript(p.template!!, c.projects.getBundle(pid)!!.sections, written.scripts, false, null, 0)
-                        val review = c.scriptWriter.editorialReview(ctx, tmp)
-                        written.meta.copy(qualityNotes = written.meta.qualityNotes + review.issues.map { "Shot ${it.sectionIndex}: ${it.problem} → ${it.suggestion}" } +
-                            "Editorial review (AI, advisory): naturalness ${review.naturalness}/5, engagement ${review.engagement}/5")
+                        val tmpSections = ProductionPlanner.sections(tpl, emptyList(), { "tmp" }, 0L).let {
+                            ProductionPlanner.mergeScript(tpl, it, written.scripts, false, null, 0L)
+                        }
+                        val review = c.scriptWriter.editorialReview(ctx, tmpSections)
+                        written.meta.copy(
+                            qualityNotes = written.meta.qualityNotes +
+                                review.issues.map { "Shot ${it.sectionIndex}: ${it.problem} → ${it.suggestion}" } +
+                                "Editorial review (AI, advisory): naturalness ${review.naturalness}/5, engagement ${review.engagement}/5",
+                        )
                     }.getOrElse { if (it is CancellationException) throw it; written.meta }
-                } else written.meta
-                c.projects.applyScript(pid, withNotes, written.scripts, "AI script", respectLocks = true, title = null)
-                c.content.recordTopicUse(p.treatmentId, p.template!!.id, key, written.meta.hookOptions.firstOrNull()?.text.orEmpty())
+                } else {
+                    written.meta
+                }
+
+                val targetPid: String = persistedProjectId?.also { existingId ->
+                    c.projects.updateConcept(existingId, updatedConcept)
+                    c.projects.applyScript(existingId, finalMeta, written.scripts, "AI script", respectLocks = true, title = written.title)
+                } ?: run {
+                    val s = c.settings.current()
+                    val baseEdit = EditSettings(captions = CaptionSettings(), quality = s.exportQuality)
+                    val bundle = c.projects.createFromTemplateWithScriptAtomically(
+                        language = workingProject.language,
+                        treatmentId = workingProject.treatmentId,
+                        duration = workingProject.duration,
+                        template = tpl,
+                        title = written.title.ifBlank { workingProject.title },
+                        baseEdit = baseEdit,
+                        concept = updatedConcept,
+                        meta = finalMeta,
+                        scripts = written.scripts,
+                        reason = "AI script",
+                    )
+                    persistedProjectId = bundle.project.id
+                    ephemeralSession?.let { sess ->
+                        val updatedSess = sess.copy(concept = updatedConcept, selectedTopic = topic, persistedProjectId = bundle.project.id)
+                        ephemeralSession = updatedSess
+                        c.creationSessions[updatedSess.sessionId] = updatedSess
+                    }
+                    bundle.project.id
+                }
+
+                c.content.recordCreativeTopicUse(topic, written.meta.hookOptions.firstOrNull()?.text.orEmpty(), approvedByUser = true)
+                _ui.update { it.copy(generating = null, generatingKey = null, isEphemeralSession = false) }
+                onDone(targetPid)
+            } catch (e: CancellationException) {
                 _ui.update { it.copy(generating = null, generatingKey = null) }
-                onDone()
-            } catch (e: CancellationException) { _ui.update { it.copy(generating = null, generatingKey = null) }; throw e }
-            catch (e: Exception) { _ui.update { it.copy(generating = null, generatingKey = null, error = e.message ?: "Script generation failed") } }
+                throw e
+            } catch (e: Exception) {
+                _ui.update { it.copy(generating = null, generatingKey = null, error = e.message ?: "Script generation failed") }
+            }
         }
     }
 
     fun cancel() { job?.cancel() }
-    fun dismissError() = _ui.update { it.copy(error = null) }
+    fun dismissError() = _ui.update { it.copy(error = null, notice = null) }
 }
 
 // =========================================================================================== Script review
@@ -294,6 +506,33 @@ class ScriptReviewViewModel(private val c: AppContainer, private val pid: String
         val b = c.projects.getBundle(pid) ?: return@launch
         val clean = app.reelify.core.content.GeneratedContentNormalizer.clean(spoken)
         c.projects.applyScript(pid, b.project.script ?: app.reelify.core.model.ScriptMeta(), listOf(SectionScript(section.index, clean, headline.trim(), section.captionEmphasis)), "manual edit", respectLocks = false, onlyIndex = section.index)
+    }
+
+    /** Explicitly normalizes medical terminology to canonical English Latin script across unlocked sections at user request. */
+    fun normalizeSavedMedicalTerminology() = viewModelScope.launch {
+        val b = c.projects.getBundle(pid) ?: return@launch
+        val meta = b.project.script ?: app.reelify.core.model.ScriptMeta()
+        val terms = c.library.terminology()
+        val updated = b.sections.filter { !it.locked }.map { s ->
+            SectionScript(
+                index = s.index,
+                spokenScript = app.reelify.core.content.MedicalGlossary.enforceEnglishMedicalTerms(s.spokenScript, terms).text,
+                onScreenHeadline = app.reelify.core.content.MedicalGlossary.enforceEnglishMedicalTerms(s.onScreenText, terms).text,
+                emphasisWords = s.captionEmphasis,
+            )
+        }
+        val normalizedHooks = meta.hookOptions.map {
+            it.copy(text = app.reelify.core.content.MedicalGlossary.enforceEnglishMedicalTerms(it.text, terms).text)
+        }
+        val normalizedActiveHook = app.reelify.core.content.MedicalGlossary.enforceEnglishMedicalTerms(meta.activeHook, terms).text
+        c.projects.applyScript(
+            pid,
+            meta.copy(hookOptions = normalizedHooks, activeHook = normalizedActiveHook),
+            updated,
+            "normalize medical terminology",
+            respectLocks = true,
+        )
+        _ui.update { it.copy(summary = "Normalized medical terminology to English across unlocked shots.") }
     }
 
     fun saveToMyVoice(spoken: String) = viewModelScope.launch {

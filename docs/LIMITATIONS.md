@@ -1,104 +1,31 @@
-# Limitations & honest notes
+# Limitations & Honest Verification Boundaries (Reelify 2.2)
 
-This document lists what is **not** done, what is approximated, and what could not be verified in
-the build environment. Nothing here is hidden behind a non-functional button in the app.
+This document records everything that could **not** be executed on physical hardware or live external APIs in this environment, along with architectural constraints of Reelify 2.2.
 
-## Reelify 2.1 — verification status & honest limits
+---
 
-* **No physical Android phone, connected ADB device, or KVM emulator AVD was available here (`adb devices` empty, `android-cli emulator list` empty).** Consequently:
-  * Real-device `TrimScreen` playback (`TrimPlayerController` GPU effect vs fallback), real hardware `TransformerRunner` preview-proxy rendering (`PreviewProxyManager`), hardware `CameraX` recording sync with `TeleprompterPanel`, and UI visual layout on device screens remain unverified on hardware until tested on a physical phone.
-  * Robolectric unit suites verified `CompositionFactory` non-`TIME_UNSET` item durations, `TrimBounds` invariants, `PreviewProxyManager` fingerprinting, `TemplateFrameGeometry` clipping bounds, `TeleprompterPacer`, `LibraryRepository` upgrade preservation, and `MockWebServer` AI flows offline.
-* **No live OpenAI / Deepgram API credentials were present in the build environment**: `CreativeEvalHarness.runLiveEvaluation` was skipped (`REELIFY_OPENAI_API_KEY` unset); AI prompt improvements and Iraqi Arabic script naturalness on live GPT responses must be spot-checked in-app with real API keys and native Iraqi clinical review.
-* **Cleopatra treatment ambiguity**: `https://cleopatra-lasercenter.com/diamond-glow/` documents DiamondGlow® at Cleopatra Laser Center, which cannot be assumed automatically for every local service named "Cleopatra". Reelify 2.1 keeps `cleopatra` unconfirmed until the user taps `"Confirm Cleopatra = DiamondGlow® (3-in-1)"` in Stage 2 or Studio.
+## 1. Environment Verification Boundaries (`Unverified` on Hardware / Live APIs)
 
-## Reelify 2.0 — what could not be verified here
+* **Physical Android Device & Emulator Execution (`Unverified`)**:
+  * No physical Android phone or running ADB emulator was connected during this build.
+  * While `:app:testDebugUnitTest` (`195/195` non-skipped JVM + Robolectric tests), `:app:compileDebugAndroidTestKotlin`, `:app:assembleDebug`, and `:app:assembleRelease` ran cleanly here, actual hardware execution of `TrimScreen`, `PreviewScreen`, CameraX capture, GL `BeautySurfaceProcessor`, hardware `TransformerRunner` encoding, and system Back navigation remains unverified until executed on a target phone per [`DEVICE_ACCEPTANCE_CHECKLIST.md`](DEVICE_ACCEPTANCE_CHECKLIST.md).
+* **Live OpenAI & Deepgram API Calls (`Unverified`)**:
+  * No OpenAI or Deepgram API keys exist in the build environment.
+  * `ScriptWriter` (`ideas`, `generate`, `hooks`, `rewrite`, targeted section revision) was verified offline against `MockWebServer` fixtures and all 9 negative regression scenarios in `CreativeQualityEvaluationTest`, while `CreativeEvalHarness.runLiveEvaluation` was skipped. Live model adherence to narrative outlines and mixed Iraqi Arabic + English medical spelling must be spot-checked in-app with your OpenAI key.
+* **Native Iraqi Clinical Review (`Human reviewed: Unverified`)**:
+  * `MedicalGlossary` proclitic attachment rules (`بـ`, `للـ`, `وللـ`, `الـ`) and curated topics are unit-tested, but a native Iraqi dermatology/laser clinician has not yet scored live v2.2 generations using `docs/eval/CREATIVE_EVAL.md`.
 
-* **Camera & beauty on real hardware: not verified.** No physical phone was available. The new
-  camera UI, template camera presets, teleprompter, hold-to-compare, the honest effect states and
-  the *sensor-space face mapping fix* compile against the real CameraX APIs and are unit-tested
-  (mapping maths) and GPU-tested (shader output on a synthetic card), but nobody has looked at a
-  real face through the live preview with this build. Do this first on your phone: record a talking
-  shot with each preset, use *Hold to compare*, and confirm the face-localised smoothing sits on
-  your face (front and rear camera).
-* The face mapping assumes the analysis and preview streams share the same 16:9 sensor crop; on a
-  device that crops them differently, face-weighted effects (under-eye, refine) may sit slightly
-  off in the *live preview* only. Skin-tone smoothing still applies everywhere and the exported reel
-  uses frame-accurate face tracks from the file.
-* **AI quality is unverified with the live model.** No OpenAI/Deepgram keys were available. Prompts,
-  schemas, validation, repair and merging were tested against a mock server. The 30-scenario
-  creative evaluation is ready to run (`docs/eval/CREATIVE_EVAL.md`) but has **no scores yet**.
-* **Iraqi Arabic authenticity is not proven by any test.** The 24 built-in reference lines were
-  written for Reelify and are marked *Not yet reviewed*; the dialect checker only catches obvious
-  MSA markers. Review them in *Studio → Iraqi style guide* — approved/corrected lines are fed to every
-  Iraqi prompt.
-* Translated UI covers the new 2.0 screens (Choose, Message, Script, Film, camera, Preview, Quick
-  Adjust, Iraqi style guide, Templates); several older detail screens (advanced editor, trim,
-  branding, treatment editor) remain English.
-* Template customisation edits presets, colour, beauty and per-shot camera/instruction; it does not
-  let you change shot roles, media requirements or the number of shots (three is fixed by design).
-* Custom shot instructions are stored in one language (the Arabic text equals what you type).
+---
 
-## Verification limits of this build environment (1.x)
+## 2. Known Functional Constraints & Intentional Design Choices
 
-* **No physical Android device was available.** The camera (CameraX capture, focus, exposure, white
-  balance, torch, 4K/60 fps, live beauty preview), the teleprompter UI, real hardware codecs and
-  real-world performance have **not** been exercised on hardware. They compile against the real
-  APIs and follow documented CameraX/Media3 patterns, but must be validated on your phone.
-* The only emulator available ran **without hardware acceleration** (QEMU TCG, SwiftShader GL,
-  software codecs). Instrumented tests were run there where feasible; see `TESTING.md` for exactly
-  which ones ran and their results. Emulator export tests render at 360×640 for runtime reasons;
-  on a physical device the same tests render 1080×1920.
-* **Live OpenAI / Deepgram calls were not made** (no credentials in the build environment). Both
-  clients were tested against a local HTTP mock server that reproduces the documented request and
-  response formats, error codes, retries and malformed output. The model id `gpt-6.2-sol` is used
-  as specified; if your account exposes a different id, change it in *AI Connections → Advanced*
-  (the *Test connection* button reports whether the configured model is visible to your key).
-
-* The **minified release build** (R8) compiles successfully, but all on-device tests ran against the
-  debug build. Run the instrumented tests against your signed release before relying on it.
-
-## Functional limitations / approximations
-
-* **Beauty filter is applied to the preview live, and to recordings at render time** (with the
-  same shader, parameters and on-device face tracking) rather than being burned into the camera
-  file. This keeps originals clean and editable and makes preview/output consistent. Face tracking
-  for rendering is sampled every ~250 ms and interpolated; very fast head motion can make the
-  face-weighted mask lag slightly (the skin-colour mask still applies everywhere, so the result
-  degrades gracefully rather than producing artifacts).
-* Live-preview face coordinates assume preview and analysis share the 16:9 field of view; on
-  devices that crop differently the under-eye/face weighting in the *camera preview* may be
-  slightly offset. The render-time result uses frame-accurate geometry from the recorded file.
-* **Crossfade/dissolve/slide transitions** blend from a snapshot of the outgoing clip's last frame
-  into the moving incoming clip (a "freeze crossfade"), because Reelify keeps a single video
-  sequence to guarantee exact section lengths. For short (≈0.4 s) transitions this is visually very
-  close to a two-stream crossfade. If you seek directly into a transition window in preview, the
-  snapshot may not exist yet and that one transition shows as a cut until played through.
-* **Captions without Deepgram** are estimated from the approved script (evenly timed per section)
-  and clearly labelled as such in the UI; word-accurate sync requires Deepgram.
-* Arabic **word-by-word highlight** uses colour/pill emphasis rather than per-word scaling, to keep
-  Arabic letter joining intact across word boundaries.
-* The **interface-language** setting switches layout direction (RTL) and translates the primary
-  navigation and actions; detailed screens are English. Reel *content* language (English / Iraqi
-  Arabic) is fully supported independently.
-* **Loudness normalization** is a speech-RMS based gain (≈ −20 dBFS speech) plus a −1 dBFS peak
-  limiter, not a full ITU-R BS.1770 LUFS meter.
-* **Preview at full quality** runs the same GPU pipeline as export (1080×1920). On less powerful
-  phones enable *Settings → Export → Lower-resolution live preview* (720×1280 preview; export is
-  always full quality).
-* Bundled music is original procedurally-synthesized audio (CC0). It is tasteful background music,
-  but it is not equivalent to a professionally produced commercial library; import your own
-  licensed tracks for a specific sound.
-* **60 fps export** is offered; it only adds smoothness if your source footage was recorded at
-  60 fps.
-* Treatments **CFU** and **Cleopatra** (and Picostar device specifics) are intentionally marked
-  *Needs configuration*: the app does not invent what they are. Review all built-in treatment
-  profiles before publishing.
-* No cloud backup: uninstalling the app deletes projects (exports in the gallery remain).
-
-## Security notes
-
-* Embedded build-time keys can be extracted from the APK. Use dedicated, budget-limited keys and
-  don't share the APK.
-* In-app keys are encrypted with an Android Keystore AES-GCM key; this protects data at rest but
-  not a rooted or otherwise compromised device.
-* The encrypted key store is excluded from cloud backup/device transfer.
+* **Ephemeral Stage 1–2 `CreationDraftSession` Scope**:
+  * `CreationDraftSession` lives in memory inside `AppContainer.creationSessions` plus URL query parameters on the `Routes.messageDraft` navigation route. If you exit back to Home before generating a script, the session is intentionally discarded with zero Room writes. If Android kills the background process *while sitting on Stage 2 (`MessageScreen`)*, the treatment, template, language, and duration restore cleanly from route arguments, while unsaved free-text notes typed into concept fields without persistence are lost (saved AI ideas via `"Save"` persist in Room immediately).
+* **Optional Trim GL Preview Guard**:
+  * Core `TrimScreen` deliberately keeps Media3 `VideoFrameProcessor` disabled (`isEffectFree == true`), previewing zoom/rotation/mirror via Compose `graphicsLayer`. Beauty and color look filters are always rendered identically during Preview Proxy generation and final Export; optional live GL preview inside Trim stays gated behind `"Optional adjustments"` with automatic fallback on OEM playback errors.
+* **Cleopatra Identity Protection**:
+  * Because `https://cleopatra-lasercenter.com/diamond-glow/` documents `DiamondGlow` at Cleopatra Laser Center rather than guaranteeing what every local clinic means by `"Cleopatra"`, the built-in `cleopatra` profile intentionally stays marked `needsConfiguration = true, identityConfirmed = false` until confirmed in Studio or Stage 2.
+* **Release APK Signing**:
+  * Because no clinic keystore (`keystore.properties` / `*.jks`) is checked into version control, `assembleRelease` outputs an unsigned R8-minified APK (`dist/Reelify-2.2.0-release-unsigned.apk`) ready for local signing before sideloading; `dist/Reelify-2.2.0-debug.apk` installs directly for debugging.
+* **Automated Local Clinical Research Refresh**:
+  * `ClinicalKnowledgeManager.auditLocalSources()` transparently inspects the bundled curated packs (`TreatmentKnowledgeCatalog`) and source dates instead of running background web scraping from the mobile client.

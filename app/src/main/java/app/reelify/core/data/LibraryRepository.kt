@@ -41,7 +41,19 @@ class LibraryRepository(private val dao: LibraryDao, private val clock: Clock = 
         } else {
             val existingTerms = dao.getTerminology().mapNotNull { it.toDomain() }.associateBy { it.id }
             val additions = TreatmentSeed.terminology.filter { it.id !in existingTerms }
-            if (additions.isNotEmpty()) dao.upsertTerminology(additions.map { it.toEntity() })
+            // Non-destructively upgrade built-in terminology rows from v2.x Arabic transliterations to v2.2 English-only policy.
+            val upgrades = TreatmentSeed.terminology.mapNotNull { latest ->
+                val cur = existingTerms[latest.id] ?: return@mapNotNull null
+                if (cur.arabic.isNotBlank() && latest.arabic.isBlank()) {
+                    latest.copy(
+                        misrecognitions = (cur.misrecognitions + cur.arabic + latest.misrecognitions)
+                            .filter { it.isNotBlank() }
+                            .distinct(),
+                    )
+                } else null
+            }
+            val changed = additions + upgrades
+            if (changed.isNotEmpty()) dao.upsertTerminology(changed.map { it.toEntity() })
         }
     }
 

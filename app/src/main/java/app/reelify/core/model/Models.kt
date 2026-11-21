@@ -362,6 +362,10 @@ data class ScriptMeta(
     val model: String = "",
     val promptVersion: String = "",
     val generatedAt: Long = 0,
+    // ---- Added in Reelify 2.2 (all defaulted for backward compatibility with stored JSON)
+    val creativeTopic: app.reelify.core.content.CreativeTopic? = null,
+    val narrativeSummary: List<String> = emptyList(),
+    val sourceIds: List<String> = emptyList(),
 )
 
 @Serializable

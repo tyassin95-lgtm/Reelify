@@ -116,9 +116,16 @@ object GeneratedContentNormalizer {
             if (unq != s) s = unq
         }
 
-        // 10. Protected spellings (Latin device/brand names only; whole-word, case-insensitive).
+        // 10. Mandatory canonical English medical terminology enforcement (even in ar-IQ).
+        val med = MedicalGlossary.enforceEnglishMedicalTerms(s)
+        if (med.text != s) {
+            s = med.text
+            issues += med.issues
+        }
+
+        // 11. Explicit caller protected spellings (Latin device/brand names only; whole-word, case-insensitive).
         for (term in protectedTerms.filter { it.isNotBlank() && it.any { c -> c in 'A'..'Z' || c in 'a'..'z' } }.sortedByDescending { it.length }) {
-            // Latin boundaries only, so Arabic prefixes attached to the name ("وlasemd") still match.
+            // Latin boundaries only, so Arabic prefixes attached to the name ("وLaseMD") still match.
             val re = Regex("(?<![A-Za-z0-9])" + Regex.escape(term) + "(?![A-Za-z0-9])", RegexOption.IGNORE_CASE)
             s = re.replace(s) { term }
         }
@@ -137,10 +144,19 @@ object GeneratedContentNormalizer {
         }
     }
 
-    /** Arabic-script letters vs Latin letters. Paragraph direction must follow the DOMINANT script, not the first letter. */
+    /**
+     * Arabic-script letters vs non-medical Latin letters. Paragraph direction follows the dominant
+     * grammatical language so mixed Iraqi Arabic sentences containing canonical English medical
+     * terminology still flow naturally RTL.
+     */
     fun isArabicDominant(text: String): Boolean {
+        var stripped = text
+        for (term in MedicalGlossary.canonicalEnglishList().sortedByDescending { it.length }) {
+            stripped = Regex("(?<![A-Za-z0-9])" + Regex.escape(term) + "(?![A-Za-z0-9])", RegexOption.IGNORE_CASE)
+                .replace(stripped, " ")
+        }
         var ar = 0; var la = 0
-        for (ch in text) {
+        for (ch in stripped) {
             if (ch in '\u0600'..'\u06FF' || ch in '\u0750'..'\u077F' || ch in '\uFB50'..'\uFDFF' || ch in '\uFE70'..'\uFEFC') ar++
             else if (ch in 'a'..'z' || ch in 'A'..'Z') la++
         }

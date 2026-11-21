@@ -19,6 +19,8 @@ import app.reelify.core.model.TransitionType
  */
 object PlanValidator {
 
+    private val unitPattern = Regex("\\b\\d+(?:\\.\\d+)?\\s*(?:nm|mm|ps|ms|mhz|hz|microseconds?)\\b", RegexOption.IGNORE_CASE)
+
     fun languageRatio(text: String): Pair<Float, Float> {
         var arabic = 0; var latin = 0
         for (ch in text) {
@@ -35,8 +37,20 @@ object PlanValidator {
         if (text.isBlank()) return true
         val (ar, la) = languageRatio(text)
         return when (language) {
-            ReelLanguage.IRAQI_ARABIC -> ar >= 0.6f       // device names in Latin script are allowed
             ReelLanguage.ENGLISH -> la >= 0.85f
+            ReelLanguage.IRAQI_ARABIC -> {
+                if (ar >= 0.58f) return true
+                // Allow mixed Iraqi Arabic with canonical English medical terms & wavelength/depth units
+                var stripped = text
+                for (term in app.reelify.core.content.MedicalGlossary.canonicalEnglishList().sortedByDescending { it.length }) {
+                    stripped = Regex("(?<![A-Za-z0-9])" + Regex.escape(term) + "(?![A-Za-z0-9])", RegexOption.IGNORE_CASE)
+                        .replace(stripped, " ")
+                }
+                stripped = unitPattern.replace(stripped, " ")
+                val arabicChars = stripped.count { it in '؀'..'ۿ' || it in 'ݐ'..'ݿ' || it in 'ﭐ'..'﷿' || it in 'ﹰ'..'﻿' }
+                val nonGlossaryLatin = stripped.count { it in 'a'..'z' || it in 'A'..'Z' }
+                arabicChars >= 2 && arabicChars.toFloat() / (arabicChars + nonGlossaryLatin).coerceAtLeast(1) >= 0.55f
+            }
         }
     }
 

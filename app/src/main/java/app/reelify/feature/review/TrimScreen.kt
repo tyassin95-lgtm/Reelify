@@ -26,11 +26,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoFixHigh
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Flip
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.RotateRight
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,10 +44,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,9 +63,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.media3.common.Effect
-import androidx.media3.effect.Presentation
-import androidx.media3.effect.ScaleAndRotateTransformation
 import app.reelify.core.audio.Envelope
 import app.reelify.core.audio.SpeechAnalysis
 import app.reelify.core.designsystem.BottomActionBar
@@ -79,13 +81,9 @@ import app.reelify.core.designsystem.SecondaryButton
 import app.reelify.core.designsystem.StatusPill
 import app.reelify.core.designsystem.ToggleRow
 import app.reelify.core.media.TrimBounds
-import app.reelify.core.media.engine.BeautyColorEffect
-import app.reelify.core.media.engine.LookMath
-import app.reelify.core.media.engine.ReframeTransformation
 import app.reelify.core.model.BeautyPreset
 import app.reelify.core.model.BeautySettings
 import app.reelify.core.model.ClipRole
-import app.reelify.core.model.ColorGrade
 import app.reelify.core.model.ConsentState
 import app.reelify.core.model.MediaClip
 import app.reelify.core.model.MediaKind
@@ -109,18 +107,21 @@ fun TrimScreen(cid: String, onBack: () -> Unit) {
     var frames by remember { mutableStateOf<List<Bitmap>>(emptyList()) }
     var envelope by remember { mutableStateOf<Envelope?>(null) }
     var suggestionNote by remember { mutableStateOf<String?>(null) }
-    var advanced by remember { mutableStateOf(false) }
+    var showAdjustments by rememberSaveable { mutableStateOf(false) }
+    var advancedBeauty by rememberSaveable { mutableStateOf(false) }
     var analyzingFace by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     var loadingClip by remember { mutableStateOf(true) }
+    var probeAttempt by remember { mutableIntStateOf(0) }
 
     val controller = rememberTrimPlayerController(ctx)
     val playing by controller.playing.collectAsStateWithLifecycle()
     val playerError by controller.error.collectAsStateWithLifecycle()
     val playerNotice by controller.notice.collectAsStateWithLifecycle()
+    val playerDiscoveredDuration by controller.discoveredDurationMs.collectAsStateWithLifecycle()
     var pos by remember { mutableLongStateOf(0L) }
 
-    LaunchedEffect(cid) {
+    LaunchedEffect(cid, probeAttempt) {
         loadingClip = true
         missingOrBroken = null
         val initial = c.projects.getClip(cid)
@@ -140,15 +141,17 @@ fun TrimScreen(cid: String, onBack: () -> Unit) {
         val uri = c.storage.toUri(initial.uri)
         var resolved: MediaClip = initial
         if (resolved.kind != MediaKind.IMAGE && resolved.sourceDurationMs <= 0L) {
-            runCatching { c.probe.probe(uri) }.onSuccess { info ->
-                val bounds = TrimBounds.validate(info.durationMs, resolved.trimStartMs, resolved.trimEndMs)
+            val probedInfo = runCatching { c.probe.probe(uri) }.getOrNull()
+            val durMs = probedInfo?.durationMs?.takeIf { it > 0L } ?: c.probe.probeDurationFallback(uri)
+            if (durMs > 0L) {
+                val bounds = TrimBounds.validate(durMs, resolved.trimStartMs, resolved.trimEndMs)
                 resolved = resolved.copy(
                     sourceDurationMs = bounds.sourceDurationMs,
                     trimStartMs = bounds.trimStartMs,
                     trimEndMs = bounds.trimEndMs,
-                    width = if (resolved.width <= 0) info.width else resolved.width,
-                    height = if (resolved.height <= 0) info.height else resolved.height,
-                    hasAudio = resolved.hasAudio || info.hasAudio,
+                    width = if (resolved.width <= 0 && probedInfo != null) probedInfo.width else resolved.width,
+                    height = if (resolved.height <= 0 && probedInfo != null) probedInfo.height else resolved.height,
+                    hasAudio = resolved.hasAudio || (probedInfo?.hasAudio == true),
                 )
             }
         } else if (resolved.kind != MediaKind.IMAGE) {
@@ -166,6 +169,22 @@ fun TrimScreen(cid: String, onBack: () -> Unit) {
         }
         if (resolved.hasAudio || resolved.kind == MediaKind.AUDIO) {
             envelope = c.audioAnalyzer.envelope(uri, hopMs = 40)
+        }
+    }
+
+    // If initial probe returned 0L but ExoPlayer discovered valid duration on STATE_READY, adopt it cleanly.
+    LaunchedEffect(playerDiscoveredDuration) {
+        val cur = clip ?: return@LaunchedEffect
+        if (cur.kind != MediaKind.IMAGE && cur.sourceDurationMs <= 0L && playerDiscoveredDuration > 0L) {
+            val bounds = TrimBounds.validate(playerDiscoveredDuration, cur.trimStartMs, cur.trimEndMs)
+            clip = cur.copy(
+                sourceDurationMs = bounds.sourceDurationMs,
+                trimStartMs = bounds.trimStartMs,
+                trimEndMs = bounds.trimEndMs,
+            )
+            if (cur.kind == MediaKind.VIDEO && frames.isEmpty()) {
+                frames = c.thumbnails.filmstrip(c.storage.toUri(cur.uri), 0L, bounds.sourceDurationMs, 10)
+            }
         }
     }
 
@@ -188,21 +207,16 @@ fun TrimScreen(cid: String, onBack: () -> Unit) {
     val sectionMs = p?.duration?.sectionMs ?: 10_000L
     val bounds = TrimBounds.validate(cl.sourceDurationMs, cl.trimStartMs, cl.trimEndMs)
 
-    // Load video/audio into standard ExoPlayer cleanly (debounced on effect/transform edits).
-    val lookKey = listOf(cl.id, cl.uri, cl.beauty, cl.transform, cl.faceTrack?.sampledAt, p?.edit?.color, missingOrBroken)
-    LaunchedEffect(lookKey) {
+    // Effect-free core ExoPlayer load (never touches GL/Presentation video effects).
+    LaunchedEffect(cl.id, cl.uri, missingOrBroken, probeAttempt) {
         if (missingOrBroken != null || cl.kind == MediaKind.IMAGE) return@LaunchedEffect
-        delay(200)
         val uri = c.storage.toUri(cl.uri)
-        val effects = if (cl.kind == MediaKind.VIDEO) {
-            buildTrimEffects(cl, p?.edit?.color ?: ColorGrade())
-        } else emptyList()
-        val startAt = pos.takeIf { it in bounds.trimStartMs..bounds.trimEndMs } ?: bounds.trimStartMs
+        val startAt = pos.takeIf { bounds.durationKnown && it in bounds.trimStartMs..bounds.trimEndMs }
+            ?: bounds.trimStartMs
         controller.load(
             uri = uri,
             startPositionMs = startAt,
             volume = if (cl.muted) 0f else cl.volume,
-            effects = effects,
             play = false,
         )
     }
@@ -214,7 +228,7 @@ fun TrimScreen(cid: String, onBack: () -> Unit) {
     LaunchedEffect(playing, bounds.trimStartMs, bounds.trimEndMs) {
         while (playing) {
             pos = controller.position()
-            if (cl.kind != MediaKind.IMAGE && bounds.trimEndMs > bounds.trimStartMs && pos >= bounds.trimEndMs) {
+            if (cl.kind != MediaKind.IMAGE && bounds.durationKnown && bounds.trimEndMs > bounds.trimStartMs && pos >= bounds.trimEndMs) {
                 controller.pause()
                 controller.seek(bounds.trimStartMs)
                 pos = bounds.trimStartMs
@@ -223,7 +237,7 @@ fun TrimScreen(cid: String, onBack: () -> Unit) {
         }
     }
 
-    // Analyze face once when beauty gets enabled so face-localized effects work in preview.
+    // Analyze face once when beauty gets enabled so face-localized effects work at export/preview.
     LaunchedEffect(cl.beauty.enabled) {
         if (cl.beauty.enabled && cl.faceTrack == null && cl.kind != MediaKind.AUDIO && missingOrBroken == null) {
             analyzingFace = true
@@ -238,6 +252,7 @@ fun TrimScreen(cid: String, onBack: () -> Unit) {
     }
 
     fun applyBounds(b: app.reelify.core.media.ValidatedTrimBounds, seekToMs: Long? = null) {
+        if (!b.durationKnown) return
         upd { it.copy(sourceDurationMs = b.sourceDurationMs, trimStartMs = b.trimStartMs, trimEndMs = b.trimEndMs) }
         seekToMs?.let { s ->
             pos = s
@@ -246,11 +261,13 @@ fun TrimScreen(cid: String, onBack: () -> Unit) {
     }
 
     val len = if (cl.kind == MediaKind.IMAGE) cl.trimmedDurationMs else bounds.trimmedDurationMs
+    val canSaveClip = missingOrBroken == null && !saving && (cl.kind == MediaKind.IMAGE || TrimBounds.canSave(bounds))
+
     ScreenFrame(
         when (cl.role) {
-            ClipRole.PRIMARY -> "Trim & frame"
-            ClipRole.BROLL -> "B-roll"
-            ClipRole.VOICEOVER -> "Voiceover"
+            ClipRole.PRIMARY -> "Trim clip"
+            ClipRole.BROLL -> "Trim B-roll"
+            ClipRole.VOICEOVER -> "Trim voiceover"
         },
         onBack,
         subtitle = cl.displayName.ifBlank { null },
@@ -258,7 +275,7 @@ fun TrimScreen(cid: String, onBack: () -> Unit) {
             BottomActionBar {
                 SecondaryButton("Cancel", onBack)
                 PrimaryButton(
-                    "Accept clip",
+                    "Save trim",
                     {
                         saving = true
                         scope.launch {
@@ -270,7 +287,7 @@ fun TrimScreen(cid: String, onBack: () -> Unit) {
                         }
                     },
                     Modifier.weight(1f),
-                    enabled = missingOrBroken == null && !saving,
+                    enabled = canSaveClip,
                     loading = saving,
                 )
             }
@@ -290,7 +307,7 @@ fun TrimScreen(cid: String, onBack: () -> Unit) {
                 }
             } else if (cl.kind == MediaKind.IMAGE) {
                 Box(
-                    Modifier.fillMaxWidth(0.62f).align(Alignment.CenterHorizontally).aspectRatio(9f / 16f)
+                    Modifier.fillMaxWidth(0.68f).align(Alignment.CenterHorizontally).aspectRatio(9f / 16f)
                         .clip(RoundedCornerShape(22.dp)).background(Color.Black),
                 ) {
                     AsyncImage(
@@ -306,16 +323,25 @@ fun TrimScreen(cid: String, onBack: () -> Unit) {
                 }
             } else if (cl.kind != MediaKind.AUDIO) {
                 Box(
-                    Modifier.fillMaxWidth(0.62f).align(Alignment.CenterHorizontally).aspectRatio(9f / 16f)
+                    Modifier.fillMaxWidth(0.68f).align(Alignment.CenterHorizontally).aspectRatio(9f / 16f)
                         .clip(RoundedCornerShape(22.dp)).background(Color.Black),
                 ) {
-                    TrimPlayerSurface(controller, Modifier.fillMaxSize())
+                    TrimPlayerSurface(
+                        controller,
+                        Modifier.fillMaxSize().graphicsLayer {
+                            scaleX = cl.transform.zoom * if (cl.transform.flipHorizontal) -1f else 1f
+                            scaleY = cl.transform.zoom
+                            translationX = cl.transform.panX * 48f
+                            translationY = cl.transform.panY * 48f
+                            rotationZ = cl.transform.rotation.toFloat()
+                        },
+                    )
                     Box(
                         Modifier.align(Alignment.BottomCenter).padding(10.dp).size(52.dp).clip(CircleShape).background(Color(0x99000000)),
                         contentAlignment = Alignment.Center,
                     ) {
                         IconButton({
-                            if (!playing && (pos < bounds.trimStartMs || pos >= bounds.trimEndMs)) {
+                            if (!playing && bounds.durationKnown && (pos < bounds.trimStartMs || pos >= bounds.trimEndMs)) {
                                 controller.seek(bounds.trimStartMs)
                                 pos = bounds.trimStartMs
                             }
@@ -325,7 +351,7 @@ fun TrimScreen(cid: String, onBack: () -> Unit) {
                         }
                     }
                     StatusPill(
-                        "${fmtSec(pos)} / ${fmtSec(bounds.sourceDurationMs)}",
+                        if (bounds.durationKnown) "${fmtSec(pos)} / ${fmtSec(bounds.sourceDurationMs)}" else "${fmtSec(pos)} / --",
                         Color.White,
                         Modifier.align(Alignment.TopStart).padding(10.dp),
                     )
@@ -333,14 +359,15 @@ fun TrimScreen(cid: String, onBack: () -> Unit) {
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton({
-                        if (!playing && (pos < bounds.trimStartMs || pos >= bounds.trimEndMs)) {
+                        if (!playing && bounds.durationKnown && (pos < bounds.trimStartMs || pos >= bounds.trimEndMs)) {
                             controller.seek(bounds.trimStartMs)
                         }
                         controller.toggle()
                     }) {
                         Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = Rf.Text)
                     }
-                    Text("Play selection (${fmtSec(pos)} / ${fmtSec(bounds.sourceDurationMs)})", style = MaterialTheme.typography.titleSmall)
+                    val durTxt = if (bounds.durationKnown) fmtSec(bounds.sourceDurationMs) else "--"
+                    Text("Play selection (${fmtSec(pos)} / $durTxt)", style = MaterialTheme.typography.titleSmall)
                 }
             }
 
@@ -350,14 +377,22 @@ fun TrimScreen(cid: String, onBack: () -> Unit) {
                     SecondaryButton("Replace / remove clip", {
                         scope.launch { c.projects.deleteClip(cl.projectId, cl.id); onBack() }
                     }, icon = Icons.Rounded.DeleteOutline)
-                    SecondaryButton("Return safely", onBack)
+                    SecondaryButton("Retry load", { probeAttempt++ }, icon = Icons.Rounded.Refresh)
                 }
             }
             playerNotice?.let { InfoBanner(it, color = Rf.Info) }
 
-            if (cl.beauty.enabled) InfoBanner("Appearance-altering beauty effects are ON for this clip. The original file is kept untouched; effects are applied when rendering.", color = Rf.RoseSoft)
+            if ((cl.kind == MediaKind.VIDEO || cl.kind == MediaKind.AUDIO) && missingOrBroken == null && !bounds.durationKnown) {
+                ErrorBanner("Duration metadata could not be read for this file yet. Tap Retry duration check or replace the clip — invalid trimming stays disabled.")
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SecondaryButton("Retry duration check", { probeAttempt++ }, icon = Icons.Rounded.Refresh)
+                    SecondaryButton("Remove clip", {
+                        scope.launch { c.projects.deleteClip(cl.projectId, cl.id); onBack() }
+                    }, icon = Icons.Rounded.DeleteOutline)
+                }
+            }
 
-            if ((cl.kind == MediaKind.VIDEO || cl.kind == MediaKind.AUDIO) && missingOrBroken == null) CinematicCard {
+            if ((cl.kind == MediaKind.VIDEO || cl.kind == MediaKind.AUDIO) && missingOrBroken == null && bounds.durationKnown) CinematicCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Eyebrow("Trim", modifier = Modifier.weight(1f))
                     val delta = len - sectionMs
@@ -397,7 +432,6 @@ fun TrimScreen(cid: String, onBack: () -> Unit) {
                         val playX = (size.width * pos / dur).coerceIn(0f, size.width)
                         drawRect(Color(0xB3000000), size = Size(startX, size.height))
                         drawRect(Color(0xB3000000), topLeft = Offset(endX, 0f), size = Size(size.width - endX, size.height))
-                        // Visible trim handles
                         drawLine(Rf.Rose, Offset(startX, 0f), Offset(startX, size.height), strokeWidth = 5f)
                         drawLine(Rf.Rose, Offset(endX, 0f), Offset(endX, size.height), strokeWidth = 5f)
                         drawLine(Color.White, Offset(playX, 0f), Offset(playX, size.height), strokeWidth = 3f)
@@ -411,6 +445,7 @@ fun TrimScreen(cid: String, onBack: () -> Unit) {
                         applyBounds(next, seek)
                     },
                     valueRange = bounds.sliderRange,
+                    enabled = bounds.durationKnown,
                     colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Rf.Rose, inactiveTrackColor = Rf.Surface3),
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -428,7 +463,11 @@ fun TrimScreen(cid: String, onBack: () -> Unit) {
                     }
                     Text("Out ${fmtSec(bounds.trimEndMs)}", style = MaterialTheme.typography.labelMedium)
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    GhostButton("Preview selection", {
+                        pos = bounds.trimStartMs
+                        controller.previewSelection(bounds.trimStartMs)
+                    }, icon = Icons.Rounded.PlayArrow)
                     GhostButton("Reset trim", {
                         val reset = bounds.reset()
                         applyBounds(reset, reset.trimStartMs)
@@ -457,84 +496,93 @@ fun TrimScreen(cid: String, onBack: () -> Unit) {
                 Text("Stills get a subtle, controlled pan/zoom so they never look frozen.", style = MaterialTheme.typography.bodySmall)
             }
 
-            if (cl.role == ClipRole.BROLL) CinematicCard {
-                Eyebrow("Placement in section")
-                ToggleRow("Automatic placement", cl.placementMs == null, { v -> upd { it.copy(placementMs = if (v) null else 0L) } }, subtitle = "Fills a gap at the end, otherwise cuts away after the opening")
-                cl.placementMs?.let { pm ->
-                    val maxPlacementSec = ((sectionMs - 500L).coerceAtLeast(500L) / 1000f)
-                    val curPlacementSec = (pm / 1000f).coerceIn(0f, maxPlacementSec)
-                    LabeledSlider("Starts at", curPlacementSec, { v -> upd { it.copy(placementMs = (v * 1000).toLong()) } }, range = 0f..maxPlacementSec, valueText = fmtSec(pm))
-                }
-                Text("B-roll replaces the picture only — your dialogue continues underneath.", style = MaterialTheme.typography.bodySmall)
-            }
-
-            if (cl.kind != MediaKind.AUDIO) CinematicCard {
-                Eyebrow("Frame (9:16)")
-                LabeledSlider("Zoom", cl.transform.zoom.coerceIn(1f, 2.5f), { v -> upd { it.copy(transform = it.transform.copy(zoom = v)) } }, range = 1f..2.5f, valueText = "%.2f×".format(cl.transform.zoom))
-                if (cl.transform.zoom > 1.01f) {
-                    LabeledSlider("Horizontal position", cl.transform.panX.coerceIn(-1f, 1f), { v -> upd { it.copy(transform = it.transform.copy(panX = v)) } }, range = -1f..1f, valueText = "%.2f".format(cl.transform.panX))
-                    LabeledSlider("Vertical position", cl.transform.panY.coerceIn(-1f, 1f), { v -> upd { it.copy(transform = it.transform.copy(panY = v)) } }, range = -1f..1f, valueText = "%.2f".format(cl.transform.panY))
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SecondaryButton("Rotate ${cl.transform.rotation}°", { upd { it.copy(transform = it.transform.copy(rotation = (it.transform.rotation + 90) % 360)) } }, icon = Icons.Rounded.RotateRight)
-                    SecondaryButton(if (cl.transform.flipHorizontal) "Unflip" else "Mirror", { upd { it.copy(transform = it.transform.copy(flipHorizontal = !it.transform.flipHorizontal)) } }, icon = Icons.Rounded.Flip)
-                }
-            }
-
-            if (cl.hasAudio || cl.kind == MediaKind.AUDIO) CinematicCard {
-                Eyebrow("Audio")
-                ToggleRow("Mute original audio", cl.muted, { v -> upd { it.copy(muted = v) } })
-                LabeledSlider("Clip volume", cl.volume.coerceIn(0f, 2f), { v -> upd { it.copy(volume = v) } }, range = 0f..2f, valueText = "${(cl.volume * 100).toInt()}%")
-            }
-
-            if (cl.kind != MediaKind.AUDIO) CinematicCard {
+            // Secondary optional adjustments kept cleanly behind an expandable section.
+            CinematicCard(onClick = { showAdjustments = !showAdjustments }) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Eyebrow("Beauty & skin", modifier = Modifier.weight(1f))
-                    if (analyzingFace) StatusPill("Detecting face…", Rf.Info)
-                }
-                if (cl.isClinical) Row(Modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.WarningAmber, null, tint = Rf.Warning, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Clinical footage: keep beauty OFF so skin and results are shown honestly.", style = MaterialTheme.typography.bodySmall.copy(color = Rf.Warning))
-                }
-                ToggleRow("Enable beauty filter", cl.beauty.enabled, { v -> upd { it.copy(beauty = if (v) BeautySettings.forPreset(it.beauty.preset.takeIf { p -> p != BeautyPreset.CUSTOM } ?: BeautyPreset.NATURAL, it.beauty.intensity) else it.beauty.copy(enabled = false)) } })
-                if (cl.beauty.enabled) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        BeautyPreset.entries.forEach { bp -> Chip(bp.label, cl.beauty.preset == bp, { upd { it.copy(beauty = if (bp == BeautyPreset.CUSTOM) it.beauty.copy(preset = bp) else BeautySettings.forPreset(bp, it.beauty.intensity)) } }) }
+                    Icon(Icons.Rounded.Tune, null, tint = Rf.RoseSoft, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Optional adjustments", style = MaterialTheme.typography.titleSmall)
+                        val activeSummary = buildList {
+                            if (cl.beauty.enabled) add("Beauty: ${cl.beauty.preset.label}")
+                            if (cl.muted) add("Muted")
+                            if (cl.transform.zoom > 1.01f || cl.transform.rotation != 0 || cl.transform.flipHorizontal) add("Reframed")
+                            if (cl.isClinical) add("Clinical")
+                        }.joinToString(" · ").ifBlank { "Framing, audio, beauty, B-roll & consent" }
+                        Text(activeSummary, style = MaterialTheme.typography.bodySmall)
                     }
-                    LabeledSlider("Intensity", cl.beauty.intensity.coerceIn(0f, 1f), { v -> upd { it.copy(beauty = it.beauty.copy(intensity = v)) } })
-                    GhostButton(if (advanced) "Hide fine controls" else "Fine controls", { advanced = !advanced })
-                    Expandable(advanced) { BeautyControls(cl.beauty) { b -> upd { it.copy(beauty = b.copy(preset = BeautyPreset.CUSTOM)) } } }
+                    Icon(if (showAdjustments) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null, tint = Rf.TextSecondary)
                 }
             }
 
-            CinematicCard {
-                Eyebrow("Clinical & consent")
-                ToggleRow("Clinical / treatment footage", cl.isClinical, { v -> upd { it.copy(isClinical = v, beauty = if (v) it.beauty.copy(enabled = false) else it.beauty) } })
-                ToggleRow("Shows an identifiable patient", cl.identifiablePatient, { v -> upd { it.copy(identifiablePatient = v, consent = if (v) ConsentState.NOT_CONFIRMED else ConsentState.NOT_REQUIRED) } })
-                if (cl.identifiablePatient) ToggleRow("Patient consent obtained", cl.consent == ConsentState.CONFIRMED, { v -> upd { it.copy(consent = if (v) ConsentState.CONFIRMED else ConsentState.NOT_CONFIRMED) } })
+            Expandable(showAdjustments) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (cl.beauty.enabled) {
+                        InfoBanner("Appearance-altering beauty effects are ON for this clip. The original file is kept untouched; effects render cleanly in preview/export.", color = Rf.RoseSoft)
+                    }
+
+                    if (cl.role == ClipRole.BROLL) CinematicCard {
+                        Eyebrow("Placement in section")
+                        ToggleRow("Automatic placement", cl.placementMs == null, { v -> upd { it.copy(placementMs = if (v) null else 0L) } }, subtitle = "Fills a gap at the end, otherwise cuts away after the opening")
+                        cl.placementMs?.let { pm ->
+                            val maxPlacementSec = ((sectionMs - 500L).coerceAtLeast(500L) / 1000f)
+                            val curPlacementSec = (pm / 1000f).coerceIn(0f, maxPlacementSec)
+                            LabeledSlider("Starts at", curPlacementSec, { v -> upd { it.copy(placementMs = (v * 1000).toLong()) } }, range = 0f..maxPlacementSec, valueText = fmtSec(pm))
+                        }
+                        Text("B-roll replaces the picture only — your dialogue continues underneath.", style = MaterialTheme.typography.bodySmall)
+                    }
+
+                    if (cl.kind != MediaKind.AUDIO) CinematicCard {
+                        Eyebrow("Frame (9:16)")
+                        LabeledSlider("Zoom", cl.transform.zoom.coerceIn(1f, 2.5f), { v -> upd { it.copy(transform = it.transform.copy(zoom = v)) } }, range = 1f..2.5f, valueText = "%.2f×".format(cl.transform.zoom))
+                        if (cl.transform.zoom > 1.01f) {
+                            LabeledSlider("Horizontal position", cl.transform.panX.coerceIn(-1f, 1f), { v -> upd { it.copy(transform = it.transform.copy(panX = v)) } }, range = -1f..1f, valueText = "%.2f".format(cl.transform.panX))
+                            LabeledSlider("Vertical position", cl.transform.panY.coerceIn(-1f, 1f), { v -> upd { it.copy(transform = it.transform.copy(panY = v)) } }, range = -1f..1f, valueText = "%.2f".format(cl.transform.panY))
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SecondaryButton("Rotate ${cl.transform.rotation}°", { upd { it.copy(transform = it.transform.copy(rotation = (it.transform.rotation + 90) % 360)) } }, icon = Icons.Rounded.RotateRight)
+                            SecondaryButton(if (cl.transform.flipHorizontal) "Unflip" else "Mirror", { upd { it.copy(transform = it.transform.copy(flipHorizontal = !it.transform.flipHorizontal)) } }, icon = Icons.Rounded.Flip)
+                        }
+                    }
+
+                    if (cl.hasAudio || cl.kind == MediaKind.AUDIO) CinematicCard {
+                        Eyebrow("Audio")
+                        ToggleRow("Mute original audio", cl.muted, { v -> upd { it.copy(muted = v) } })
+                        LabeledSlider("Clip volume", cl.volume.coerceIn(0f, 2f), { v -> upd { it.copy(volume = v) } }, range = 0f..2f, valueText = "${(cl.volume * 100).toInt()}%")
+                    }
+
+                    if (cl.kind != MediaKind.AUDIO) CinematicCard {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Eyebrow("Beauty & skin", modifier = Modifier.weight(1f))
+                            if (analyzingFace) StatusPill("Detecting face…", Rf.Info)
+                        }
+                        if (cl.isClinical) Row(Modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.WarningAmber, null, tint = Rf.Warning, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Clinical footage: keep beauty OFF so skin and results are shown honestly.", style = MaterialTheme.typography.bodySmall.copy(color = Rf.Warning))
+                        }
+                        ToggleRow("Enable beauty filter", cl.beauty.enabled, { v -> upd { it.copy(beauty = if (v) BeautySettings.forPreset(it.beauty.preset.takeIf { p -> p != BeautyPreset.CUSTOM } ?: BeautyPreset.NATURAL, it.beauty.intensity) else it.beauty.copy(enabled = false)) } })
+                        if (cl.beauty.enabled) {
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                BeautyPreset.entries.forEach { bp -> Chip(bp.label, cl.beauty.preset == bp, { upd { it.copy(beauty = if (bp == BeautyPreset.CUSTOM) it.beauty.copy(preset = bp) else BeautySettings.forPreset(bp, it.beauty.intensity)) } }) }
+                            }
+                            LabeledSlider("Intensity", cl.beauty.intensity.coerceIn(0f, 1f), { v -> upd { it.copy(beauty = it.beauty.copy(intensity = v)) } })
+                            GhostButton(if (advancedBeauty) "Hide fine controls" else "Fine controls", { advancedBeauty = !advancedBeauty })
+                            Expandable(advancedBeauty) { BeautyControls(cl.beauty) { b -> upd { it.copy(beauty = b.copy(preset = BeautyPreset.CUSTOM)) } } }
+                        }
+                    }
+
+                    CinematicCard {
+                        Eyebrow("Clinical & consent")
+                        ToggleRow("Clinical / treatment footage", cl.isClinical, { v -> upd { it.copy(isClinical = v, beauty = if (v) it.beauty.copy(enabled = false) else it.beauty) } })
+                        ToggleRow("Shows an identifiable patient", cl.identifiablePatient, { v -> upd { it.copy(identifiablePatient = v, consent = if (v) ConsentState.NOT_CONFIRMED else ConsentState.NOT_REQUIRED) } })
+                        if (cl.identifiablePatient) ToggleRow("Patient consent obtained", cl.consent == ConsentState.CONFIRMED, { v -> upd { it.copy(consent = if (v) ConsentState.CONFIRMED else ConsentState.NOT_CONFIRMED) } })
+                    }
+                }
             }
             Spacer(Modifier.height(24.dp))
         }
     }
-}
-
-private fun buildTrimEffects(clip: MediaClip, grade: ColorGrade, width: Int = 720, height: Int = 1280): List<Effect> {
-    val fx = mutableListOf<Effect>()
-    if (clip.transform.rotation % 360 != 0) {
-        fx += ScaleAndRotateTransformation.Builder().setRotationDegrees(clip.transform.rotation.toFloat()).build()
-    }
-    fx += Presentation.createForWidthAndHeight(width, height, Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP)
-    val params = LookMath.params(clip.beauty, grade)
-    val track = clip.faceTrack
-    if (!params.isIdentity) {
-        fx += BeautyColorEffect(params, if (track != null && track.samples.isNotEmpty()) { tUs ->
-            LookMath.interpolate(track, tUs / 1000)?.let { LookMath.toUniform(it, clip.displayWidth, clip.displayHeight, clip.transform.rotation, width, height) }
-        } else null)
-    }
-    val reframe = ReframeTransformation(clip.transform.zoom, clip.transform.panX, clip.transform.panY, clip.transform.flipHorizontal, 0f, 0, 1)
-    if (!reframe.isStatic) fx += reframe
-    return fx
 }
 
 @Composable

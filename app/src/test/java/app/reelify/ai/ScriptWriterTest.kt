@@ -64,12 +64,23 @@ class ScriptWriterTest {
         HookDto("expert_insight", "من خبرتي بالعيادة، السر بالخطة مو بالجهاز."),
     )
     private val iqSections = listOf(
-        ScriptSectionDto(1, "خلّي أحجيلكم شغلة مهمة عن الإيروليز وحب الشباب.", "شغلة مهمة", listOf("الإيروليز")),
-        ScriptSectionDto(2, "الإيروليز يشتغل بنبضة قصيرة كلش، وعدد الجلسات يختلف حسب حالة البشرة.", "شلون يشتغل", listOf("نبضة")),
-        ScriptSectionDto(3, "إذا محتارين، احجزوا تقييم ونشوف سوا شنو الأنسب إلكم.", "احجز تقييم", listOf("تقييم")),
+        ScriptSectionDto(1, "خلّي أحجيلكم شغلة مهمة عن Aerolase وحب الشباب.", "شغلة مهمة", listOf("Aerolase")),
+        ScriptSectionDto(2, "Aerolase يشتغل بنبضة 650 microseconds تستهدف الحبوب والتصبغات بدون ما تجرح السطح.", "شلون يشتغل", listOf("650")),
+        ScriptSectionDto(3, "النتيجة تتجمع عبر جلسات متباعدة لأن الجلد يحتاج وقت للتهدئة، فأحجز تقييم نرتب بيه خطتك.", "احجز تقييم", listOf("جلسات")),
     )
     private fun script(sections: List<ScriptSectionDto> = iqSections, hooks: List<HookDto> = iqHooks, lang: String = "ar-IQ") =
-        json.encodeToString(ScriptDto.serializer(), ScriptDto("غلطة شائعة", lang, "Common mistake angle", hooks, sections, "book_assessment", emptyList()))
+        json.encodeToString(
+            ScriptDto.serializer(),
+            ScriptDto(
+                title = "غلطة شائعة",
+                language = lang,
+                creativeAngle = "Common mistake angle",
+                hookOptions = hooks,
+                sections = sections,
+                ctaStyle = "book_assessment",
+                medicalReview = emptyList(),
+            ),
+        )
 
     private fun enqueue(text: String) = server.enqueue(MockResponse().setBody(responsesBody(text)))
     private fun body(): kotlinx.serialization.json.JsonObject = Json.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
@@ -106,8 +117,8 @@ class ScriptWriterTest {
     @Test fun `English uses the English system prompt`() = runTest {
         enqueue(script(listOf(
             ScriptSectionDto(1, "Here is the one thing most people get wrong before laser.", "One mistake", listOf("wrong")),
-            ScriptSectionDto(2, "Aerolase uses a very short pulse, and the number of sessions depends on your skin.", "How it works", listOf("pulse")),
-            ScriptSectionDto(3, "Not sure what fits your skin? Book an assessment and we'll plan it together.", "Book an assessment", listOf("assessment")),
+            ScriptSectionDto(2, "Aerolase uses a 650 microsecond pulse at 1064 nm to calm oil glands and redness without overheating the epidermis.", "How it works", listOf("650")),
+            ScriptSectionDto(3, "Because results build over spaced sessions with daily sunscreen, book an assessment and we'll plan it together.", "Book an assessment", listOf("sessions")),
         ), listOf(HookDto("curiosity", "Why do some people see no laser results?"), HookDto("common_mistake", "Skipping this step ruins most laser plans."), HookDto("expert_insight", "After years in clinic, the plan matters more than the device.")), "en"))
         writer.generate(ctx(ReelLanguage.ENGLISH))
         assertThat(body()["instructions"]!!.jsonPrimitive.content).startsWith(ScriptPrompts.SYSTEM_EN.lines().first())
@@ -135,9 +146,15 @@ class ScriptWriterTest {
     @Test fun `too-long sections and unsafe claims fail validation, myths are only flagged`() {
         val budget = ScriptValidator.wordBudget(TimingEstimator(), ReelLanguage.ENGLISH, 10_000)
         val long = ScriptSectionDto(2, (1..60).joinToString(" ") { "word$it" }, "", emptyList())
-        val dto = ScriptDto("t", "en", "a", listOf(HookDto("curiosity", "Why?"), HookDto("myth", "A myth."), HookDto("question", "Ready?")),
-            listOf(ScriptSectionDto(1, "Some people believe results are permanent forever.", "Myth", emptyList()), long, ScriptSectionDto(3, "Results are guaranteed for everyone who books today.", "", emptyList())),
-            "book_assessment", emptyList())
+        val dto = ScriptDto(
+            title = "t",
+            language = "en",
+            creativeAngle = "a",
+            hookOptions = listOf(HookDto("curiosity", "Why?"), HookDto("myth", "A myth."), HookDto("question", "Ready?")),
+            sections = listOf(ScriptSectionDto(1, "Some people believe results are permanent forever.", "Myth", emptyList()), long, ScriptSectionDto(3, "Results are guaranteed for everyone who books today.", "", emptyList())),
+            ctaStyle = "book_assessment",
+            medicalReview = emptyList(),
+        )
         val check = ScriptValidator.validateScript(dto, BuiltInTemplates.MYTH_BUSTER, ReelLanguage.ENGLISH, budget, emptyList())
         assertThat(check.errors.joinToString()).contains("section 2: too long")
         assertThat(check.errors.joinToString()).contains("section 3: unsafe claim")
@@ -173,7 +190,7 @@ class ScriptWriterTest {
 
     @Test fun `rewrite returning the wrong sections is repaired`() = runTest {
         val wrong = RewriteDto(listOf(ScriptSectionDto(3, "إذا محتارين، احجزوا تقييم ونشوف سوا شنو الأنسب إلكم هواية.", "", emptyList())), "x")
-        val right = RewriteDto(listOf(ScriptSectionDto(2, "الإيروليز يشتغل بنبضة قصيرة كلش، والنتيجة تختلف من شخص لشخص حسب البشرة.", "", emptyList())), "y")
+        val right = RewriteDto(listOf(ScriptSectionDto(2, "Aerolase يشتغل بنبضة قصيرة كلش، والنتيجة تختلف من شخص لشخص حسب البشرة.", "", emptyList())), "y")
         enqueue(json.encodeToString(RewriteDto.serializer(), wrong)); enqueue(json.encodeToString(RewriteDto.serializer(), right))
         val r = writer.rewrite(ctx(), sections(), iqHooks[0].text, ScriptAction.MORE_NATURAL_IRAQI, setOf(2))
         assertThat(r.scripts.single().index).isEqualTo(2)
@@ -197,13 +214,14 @@ class ScriptWriterTest {
 
     @Test fun `fresh ideas are validated for language and diversity`() = runTest {
         val ideas = IdeasDto(listOf(
-            IdeaDto("ليش حب الشباب يرجع؟", "Recurrence angle", "تعرفون ليش الحبوب ترجع بعد ما تختفي؟", "curiosity"),
-            IdeaDto("غلطة قبل الجلسة", "Mistake angle", "أكثر غلطة أشوفها: الشمس قبل الجلسة.", "common_mistake"),
-            IdeaDto("شكد جلسة أحتاج؟", "Expectations", "كم جلسة؟ الجواب الصريح يعتمد عليك.", "question"),
-            IdeaDto("الليزر والتصبغات", "Pigment angle", "التصبغات ترجع إذا ما انتبهنا لهاي الشغلة.", "surprising_fact"),
+            IdeaDto("ليش نبضة 650 microseconds تقلل حرارة السطح؟", "Short pulse width spares epidermis", "تعرفون ليش Aerolase يقلل خطر الحروق على البشرة الحنطية؟", "curiosity", "how_it_works", "How does 650 microseconds pulse protect epidermis?", "Explain pulse relaxation vs thermal damage", listOf("aero_mech_650us"), "Shorter pulse delivers energy before heat spreads."),
+            IdeaDto("شلون 1064 nm يشتغل على Hb والصبغة بنفس الجهاز؟", "Three main chromophores in skin", "أكثر غلطة أشوفها: علاج الآثار الحمرة والبنية بنفس الطريقة.", "common_mistake", "patient_question", "How does 1064 nm chromophores energy target redness vs pigment?", "Differentiate Hemoglobin redness and Melanin targets", listOf("aero_mech_chromophores"), "Matching target parameters lowers irritation risk."),
+            IdeaDto("كم جلسة تحتاج ويا Aerolase لحب الشباب أو Melasma؟", "Cumulative spacing over visits", "كم جلسة؟ الجواب الصريح يعتمد على نوع الحالة.", "question", "sessions_expectations", "Why are sessions spaced weeks apart instead of one visit?", "Set realistic series interval expectations", listOf("aero_sess_plan"), "Spaced visits let glands calm down gradually."),
+            IdeaDto("الفرق بين احمرار PIE وأثر الحبوب البني بالـ Aerolase", "Redness rosacea vs post acne marks", "ليش أثر الحبوب الأحمر يحتاج خطة غير الأثر البني؟", "surprising_fact", "myths_clarity", "Why do redness PIE and PIH Melasma need different maintenance?", "Clarify vascular redness vs pigment maintenance", listOf("aero_app_pigment_redness"), "Identifying the underlying target guides protocols."),
+            IdeaDto("ليش النقاهة بعد نبضة 650 microseconds خفيفة كلش؟", "Epidermis spared minimal downtime recovery", "تكدر تطلع للدوام بنفس اليوم بعد جلسة Aerolase؟", "relatable_concern", "before_aftercare", "Why is epidermis recovery minimal after 650 microseconds pulse?", "Explain rapid pulse epidermal sparing and sunscreen rule", listOf("aero_rec_minimal"), "Intact epidermis keeps downtime short when UV-protected."),
         ))
         enqueue(json.encodeToString(IdeasDto.serializer(), ideas))
-        assertThat(writer.ideas(ctx())).hasSize(4)
+        assertThat(writer.ideas(ctx())).hasSize(5)
     }
 
     @Test fun `hook swapping replaces only the opening line`() {
@@ -214,7 +232,15 @@ class ScriptWriterTest {
     }
 
     @Test fun `medical review flags from the model are mapped`() {
-        val dto = ScriptDto("t", "en", "a", iqHooks, iqSections, "save_for_later", listOf(ClaimFlagDto("claim", "issue", "safer", "warning")))
+        val dto = ScriptDto(
+            title = "t",
+            language = "en",
+            creativeAngle = "a",
+            hookOptions = iqHooks,
+            sections = iqSections,
+            ctaStyle = "save_for_later",
+            medicalReview = listOf(ClaimFlagDto("claim", "issue", "safer", "warning")),
+        )
         assertThat(dto.medicalReview).hasSize(1)
     }
 

@@ -123,12 +123,12 @@ object TerminologyCorrector {
     data class Correction(val from: String, val to: String)
 
     fun correct(words: List<CaptionWord>, terms: List<TerminologyEntry>, language: ReelLanguage): Pair<List<CaptionWord>, List<Correction>> {
-        if (terms.isEmpty() || words.isEmpty()) return words to emptyList()
+        if (words.isEmpty()) return words to emptyList()
         val corrections = mutableListOf<Correction>()
         val result = words.toMutableList()
-        // Build (variant tokens -> preferred spelling)
+        // Reelify 2.2 policy: medical and device terms ALWAYS normalize to canonical English Latin script.
         val variants = terms.flatMap { t ->
-            val preferred = if (language == ReelLanguage.IRAQI_ARABIC && t.arabic.isNotBlank()) t.arabic else t.english
+            val preferred = t.english.trim().ifBlank { t.arabic }
             (t.misrecognitions + listOf(t.english, t.arabic)).filter { it.isNotBlank() }.map { v ->
                 v.split(Regex("\\s+")).map { CaptionBuilder.normalize(it) }.filter { it.isNotEmpty() } to preferred
             }
@@ -154,8 +154,15 @@ object TerminologyCorrector {
                     break
                 }
             }
+            if (!matched) {
+                val singleWord = result[i].text
+                val enforced = app.reelify.core.content.MedicalGlossary.enforceEnglishMedicalTerms(singleWord, terms)
+                if (enforced.text.isNotBlank() && enforced.text != singleWord && !enforced.text.contains(' ')) {
+                    result[i] = result[i].copy(text = enforced.text)
+                    corrections += Correction(singleWord, enforced.text)
+                }
+            }
             i++
-            if (!matched) continue
         }
         return result to corrections
     }

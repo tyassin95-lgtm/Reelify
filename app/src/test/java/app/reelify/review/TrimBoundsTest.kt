@@ -16,26 +16,28 @@ class TrimBoundsTest {
         assertThat(b.sliderValue).isEqualTo(1_500f..9_500f)
     }
 
-    @Test fun `zero or negative duration metadata never crashes slider or nudges`() {
+    @Test fun `zero or negative duration metadata never invents duration or crashes slider`() {
         val zero = TrimBounds.validate(sourceDurationMs = 0L, trimStartMs = 0L, trimEndMs = 0L)
-        assertThat(zero.sourceDurationMs).isAtLeast(TrimBounds.FALLBACK_MIN_SOURCE_MS)
+        assertThat(zero.durationKnown).isFalse()
+        assertThat(zero.sourceDurationMs).isEqualTo(0L)
         assertThat(zero.trimStartMs).isEqualTo(0L)
-        assertThat(zero.trimEndMs).isGreaterThan(zero.trimStartMs)
+        assertThat(zero.trimEndMs).isEqualTo(0L)
+        assertThat(TrimBounds.canSave(zero)).isFalse()
         assertThat(zero.sliderRange.endInclusive).isGreaterThan(zero.sliderRange.start)
 
-        // Rapid nudges inside short clips never invert or throw IllegalArgumentException
+        // Edits and nudges when duration is unknown remain safe no-ops rather than inventing 500ms
         val nudgedStart = zero.nudgeStart(-100L).nudgeStart(250L).nudgeStart(10_000L)
-        assertThat(nudgedStart.trimStartMs).isLessThan(nudgedStart.trimEndMs)
-        assertThat(nudgedStart.trimStartMs).isAtLeast(0L)
+        assertThat(nudgedStart).isEqualTo(zero)
 
         val nudgedEnd = zero.nudgeEnd(-10_000L).nudgeEnd(500L)
-        assertThat(nudgedEnd.trimEndMs).isGreaterThan(nudgedEnd.trimStartMs)
-        assertThat(nudgedEnd.trimEndMs).isAtMost(nudgedEnd.sourceDurationMs)
+        assertThat(nudgedEnd).isEqualTo(zero)
     }
 
-    @Test fun `ultra short clip below 200ms remains safe for nudge controls`() {
+    @Test fun `ultra short clip below 200ms preserves true source duration and stays safe`() {
         val tiny = TrimBounds.validate(sourceDurationMs = 120L, trimStartMs = 80L, trimEndMs = 100L)
-        assertThat(tiny.sourceDurationMs).isEqualTo(TrimBounds.FALLBACK_MIN_SOURCE_MS)
+        assertThat(tiny.durationKnown).isTrue()
+        assertThat(tiny.sourceDurationMs).isEqualTo(120L)
+        assertThat(TrimBounds.canSave(tiny)).isTrue()
         val a = tiny.nudgeStart(100L)
         val b = a.nudgeEnd(-100L)
         assertThat(a.trimEndMs - a.trimStartMs).isAtLeast(tiny.minDurationMs)

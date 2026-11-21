@@ -321,6 +321,13 @@ fun TreatmentEditorScreen(id: String, onBack: () -> Unit) {
             if (tr.manufacturer.isNotBlank() || tr.deviceModel.isNotBlank()) {
                 InfoBanner("Verified device: ${listOf(tr.manufacturer, tr.deviceModel, tr.technologyType).filter { it.isNotBlank() }.joinToString(" · ")}", color = Rf.Info)
             }
+            var researchReport by remember(tr.id) { mutableStateOf<app.reelify.core.content.ResearchRefreshResult?>(null) }
+            GhostButton("Audit verified research & sources", {
+                researchReport = app.reelify.core.content.ClinicalKnowledgeManager.auditLocalSources(tr)
+            })
+            researchReport?.let { rep ->
+                InfoBanner("${rep.statusNote}\nSources: ${rep.sourceTitles.joinToString(" · ").ifBlank { "None attached" }}", color = Rf.Info)
+            }
             app.reelify.core.designsystem.ToggleRow("Needs configuration", tr.needsConfiguration, { v -> t = tr.copy(needsConfiguration = v) }, subtitle = "Turn off once the facts below are accurate for your clinic")
             ReelTextField(tr.name, { v -> t = tr.copy(name = v) }, label = "Display name", singleLine = true)
             ReelTextField(tr.arabicName, { v -> t = tr.copy(arabicName = v) }, label = "Arabic name", singleLine = true)

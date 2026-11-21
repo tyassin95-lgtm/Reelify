@@ -25,6 +25,15 @@ interface ProjectDao {
     @Query("DELETE FROM projects WHERE id = :id")
     suspend fun delete(id: String)
 
+    @Query("DELETE FROM projects WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<String>)
+
+    @Transaction
+    suspend fun insertProjectWithSections(project: ProjectEntity, sections: List<SectionEntity>) {
+        upsert(project)
+        upsertSections(sections)
+    }
+
     @Query("SELECT * FROM sections WHERE projectId = :projectId ORDER BY sectionIndex")
     fun observeSections(projectId: String): Flow<List<SectionEntity>>
 
