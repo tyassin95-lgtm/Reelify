@@ -39,7 +39,7 @@ enum class AutoEditStage(val label: String) {
     EXTRACT("Extracting dialogue audio"),
     TRANSCRIBE("Transcribing dialogue"),
     CAPTIONS("Building synchronized captions"),
-    SOUND("Choosing music & sound design"),
+    SOUND("Applying music, sound & style"),
     ASSEMBLE("Assembling the reel"),
     DONE("Ready"),
 }
@@ -159,19 +159,30 @@ class AutoEditor(
             }
             done += AutoEditStage.CAPTIONS
 
-            // AI caption emphasis
+            // Caption emphasis. Template projects use the emphasis words written with the approved
+            // script (deterministic, no extra API call); legacy projects keep the AI keyword pass.
             val openAiReady = credentials.status(AiProvider.OPENAI).configured
             val ctx = directorContext(bundle)
-            if (options.aiEmphasis && openAiReady && captions != null && captions.segments.isNotEmpty() && bundle.project.edit.captions.highlightKeywords.isEmpty()) {
+            val template = bundle.project.template.takeIf { bundle.project.isTemplate }
+            if (template != null) {
+                val words = bundle.sections.flatMap { it.captionEmphasis }.map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(8)
+                if (words.isNotEmpty() && bundle.project.edit.captions.highlightKeywords.isEmpty() && app.reelify.core.model.EditGroup.CAPTIONS !in bundle.project.edit.userOverrides) {
+                    projects.updateEdit(projectId, byUser = false) { e -> e.copy(captions = e.captions.copy(highlightKeywords = words)) }
+                }
+            } else if (options.aiEmphasis && openAiReady && captions != null && captions.segments.isNotEmpty() && bundle.project.edit.captions.highlightKeywords.isEmpty()) {
                 runCatching { director.captionEmphasis(ctx, captions.segments.joinToString(" ") { it.text }) }
-                    .onSuccess { kw -> if (kw.isNotEmpty()) projects.updateEdit(projectId) { e -> e.copy(captions = e.captions.copy(highlightKeywords = kw)) } }
+                    .onSuccess { kw -> if (kw.isNotEmpty()) projects.updateEdit(projectId, byUser = false) { e -> e.copy(captions = e.captions.copy(highlightKeywords = kw)) } }
                     .onFailure { if (it is CancellationException) throw it; warnings += "Keyword highlighting skipped: ${it.message}" }
             }
 
             // 6. Music & SFX
             emit(AutoEditStage.SOUND)
             bundle = projects.getBundle(projectId)!!
-            if (bundle.project.edit.music.trackId == null) {
+            if (template != null) {
+                // Template rules: same music, SFX positions, transitions, colour, captions and
+                // branding every time. Groups the user changed are left alone.
+                projects.updateEdit(projectId, byUser = false) { e -> app.reelify.core.template.ProductionPlanner.applyTemplateDefaults(e, template, bundle.project.duration) }
+            } else if (bundle.project.edit.music.trackId == null) {
                 val density = speechDensity(bundle)
                 var trackId: String? = null
                 var cues: List<SfxCue> = emptyList()
@@ -184,7 +195,7 @@ class AutoEditor(
                     trackId = SoundLibrary.match(bundle.project.plan?.musicMood, density, preferCalm = true).id
                     cues = bundle.sections.mapNotNull { s -> s.sfxCue.takeIf { it.isNotBlank() }?.let { id -> cueFor(if (s.index == 1) "start" else "boundary_${s.index - 1}", id, bundle) } }
                 }
-                projects.updateEdit(projectId) { e -> e.copy(music = e.music.copy(trackId = trackId), sfx = cues) }
+                projects.updateEdit(projectId, byUser = false) { e -> e.copy(music = e.music.copy(trackId = trackId), sfx = cues) }
             }
             done += AutoEditStage.SOUND
 

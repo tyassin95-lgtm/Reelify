@@ -39,6 +39,8 @@ import androidx.compose.material.icons.rounded.MedicalServices
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Spellcheck
+import androidx.compose.material.icons.rounded.Translate
+import androidx.compose.material.icons.rounded.ViewCarousel
 import androidx.compose.material.icons.rounded.Subtitles
 import androidx.compose.material.icons.rounded.Upload
 import androidx.compose.material.icons.rounded.WarningAmber
@@ -139,6 +141,8 @@ fun StudioTab(nav: NavHostController) {
         item { Text("Custom caption styles you save from the reel preview appear here.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 20.dp)) }
         item { Column(Modifier.padding(horizontal = 20.dp)) { NavRow(Icons.Rounded.LibraryMusic, "Music & SFX library", "${SoundLibrary.music.size} original tracks · ${SoundLibrary.sfx.size} effects · import your own") { nav.navigate(Routes.LIBRARY) } } }
         item { Column(Modifier.padding(horizontal = 20.dp)) { NavRow(Icons.Rounded.Spellcheck, "Terminology dictionary", "Preferred spellings for scripts & caption correction") { nav.navigate(Routes.TERMINOLOGY) } } }
+        item { Column(Modifier.padding(horizontal = 20.dp)) { NavRow(Icons.Rounded.Translate, app.reelify.feature.common.tr("Iraqi style guide", "دليل اللهجة العراقية"), app.reelify.feature.common.tr("Approve or correct the lines that teach the AI your voice", "وافق أو صحّح الجمل اللي تعلّم الذكاء الاصطناعي أسلوبك")) { nav.navigate(Routes.IRAQI_STYLE) } } }
+        item { Column(Modifier.padding(horizontal = 20.dp)) { NavRow(Icons.Rounded.ViewCarousel, app.reelify.feature.common.tr("Templates", "القوالب"), app.reelify.feature.common.tr("Six built-in formats · customise your own copy", "ستة قوالب أساسية · عدّل نسخة خاصة")) { nav.navigate(Routes.TEMPLATES) } } }
         item { Eyebrow("Treatment profiles", modifier = Modifier.padding(horizontal = 20.dp)) }
         items(treatments, key = { it.id }) { t ->
             Column(Modifier.padding(horizontal = 20.dp)) {

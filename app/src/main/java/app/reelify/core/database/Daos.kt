@@ -121,3 +121,39 @@ interface LibraryDao {
     @Query("DELETE FROM terminology WHERE id = :id")
     suspend fun deleteTerminology(id: String)
 }
+
+@Dao
+interface ContentDao {
+    @Query("SELECT * FROM custom_templates ORDER BY updatedAt DESC")
+    fun observeCustomTemplates(): Flow<List<CustomTemplateEntity>>
+
+    @Query("SELECT * FROM custom_templates WHERE id = :id")
+    suspend fun getCustomTemplate(id: String): CustomTemplateEntity?
+
+    @Upsert
+    suspend fun upsertCustomTemplate(entity: CustomTemplateEntity)
+
+    @Query("DELETE FROM custom_templates WHERE id = :id")
+    suspend fun deleteCustomTemplate(id: String)
+
+    @Query("SELECT * FROM style_examples WHERE language = :language ORDER BY updatedAt DESC")
+    fun observeStyleExamples(language: String): Flow<List<StyleExampleEntity>>
+
+    @Query("SELECT * FROM style_examples WHERE language = :language")
+    suspend fun getStyleExamples(language: String): List<StyleExampleEntity>
+
+    @Upsert
+    suspend fun upsertStyleExample(entity: StyleExampleEntity)
+
+    @Query("DELETE FROM style_examples WHERE id = :id")
+    suspend fun deleteStyleExample(id: String)
+
+    @Insert
+    suspend fun insertTopicUse(entity: TopicHistoryEntity): Long
+
+    @Query("SELECT * FROM topic_history WHERE treatmentId = :treatmentId ORDER BY usedAt DESC LIMIT :limit")
+    suspend fun recentTopics(treatmentId: String, limit: Int): List<TopicHistoryEntity>
+
+    @Query("SELECT * FROM topic_history ORDER BY usedAt DESC LIMIT :limit")
+    suspend fun recentTopicsAll(limit: Int): List<TopicHistoryEntity>
+}

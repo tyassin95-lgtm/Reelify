@@ -45,6 +45,15 @@ data class CameraDefaults(
     val faceGuide: Boolean = true,
 )
 
+/** The creator's last Stage-1 choices, remembered for the next reel. */
+@Serializable
+data class LastReelChoice(
+    val treatmentId: String? = null,
+    val language: ReelLanguage? = null,
+    val durationMs: Long = 30_000,
+    val templateId: String? = null,
+)
+
 @Serializable
 data class AppSettings(
     val uiLanguage: UiLanguage = UiLanguage.SYSTEM,
@@ -61,6 +70,9 @@ data class AppSettings(
     val sendKeytermsToDeepgram: Boolean = true,
     val haptics: Boolean = true,
     val proxyPreview: Boolean = false,
+    val lastChoice: LastReelChoice = LastReelChoice(),
+    /** Optional AI editorial review after each generated script (one extra request). */
+    val aiEditorialReview: Boolean = false,
 )
 
 @Serializable

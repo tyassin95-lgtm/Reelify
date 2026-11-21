@@ -1,5 +1,31 @@
 # Reelify — implementation progress
 
+## Reelify 2.0 (branch `reelify-v2-refactor`)
+
+| Phase | Status |
+|---|---|
+| 1 Baseline audit | Done — `docs/V2_BASELINE_AUDIT.md` (HEAD 2490cb1, 80/80 tests) |
+| 2 Template architecture | Done — models, 6 built-in templates, presets, planner, repository, versioned snapshots, Room v2 migration, legacy mode |
+| 3 AI refactor | Done — script-only schema, ScriptWriter (generate/ideas/hooks/5 rewrite modes/editorial review), dedicated Iraqi prompt, 24-line style guide with owner review, 7 validation layers, normalizer, topic library with history |
+| 4 Workflow | Done — Choose → Message/Script → Film → Preview & Export; legacy screens kept for 1.x projects |
+| 5 Camera | Done — coordinated overlay scaffold, teleprompter band, template camera presets, recording feedback |
+| 6 Beauty | Done — root-cause fixes (sensor-space face mapping, input texel size, face axes), calibrated presets, effect states, no silent fallback, hold-to-compare, filtered take review |
+| 7 Auto editor | Done — template rules, no AI music/SFX/keyword calls, overrides respected, caption retry |
+| 8 UI polish | Done for the main journey; older detail screens unchanged |
+| 9 Regression | 150 JVM tests pass; on-device GPU/layout/Arabic tests pass; real on-device 1.x→2.0 upgrade verified; export results in TESTING.md |
+| 10 Delivery | Debug APK `dist/Reelify-2.0.0-debug.apk`; release build unsigned (no keystore configured) |
+
+## Next steps on your phone
+1. Install the debug APK over 1.x (projects migrate automatically).
+2. Add keys in Settings → AI Connections, then *Test connection*.
+3. Review the Iraqi style guide lines (Studio).
+4. Make one reel per template; check beauty with *Hold to compare*, front and rear camera.
+5. Optionally run the live creative evaluation (`docs/eval/CREATIVE_EVAL.md`).
+
+---
+
+# Reelify — implementation progress
+
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Gradle (AGP 9.5.2, Kotlin 2.4.21, compileSdk 37.2), Room, DataStore, Keystore secrets, domain model, design system | ✅ Done, compiles |

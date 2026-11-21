@@ -59,4 +59,15 @@ class ArabicRenderingTest {
         for (y in 0 until empty.height step 8) for (x in 0 until empty.width step 8) if (Color.alpha(empty.getPixel(x, y)) > 0) any++
         assertThat(any).isEqualTo(0)
     }
+
+    /** Regression for the v2 bidi fix: an Arabic line that STARTS with a Latin device name must be RTL. */
+    @Test fun arabicLineStartingWithLatinNameIsLaidOutRtl() {
+        val text = "Aerolase يشتغل بنبضة قصيرة كلش"
+        val paint = TextPaint().apply { typeface = fonts.caption(CaptionFont.SANS_BOLD, arabic = true); textSize = 56f }
+        val old = StaticLayout.Builder.obtain(text, 0, text.length, paint, 900).setTextDirection(TextDirectionHeuristics.FIRSTSTRONG_LTR).build()
+        assertThat(old.getParagraphDirection(0)).isEqualTo(Layout.DIR_LEFT_TO_RIGHT) // the 1.x behaviour (wrong for Iraqi lines)
+        val dir = if (app.reelify.core.content.GeneratedContentNormalizer.isArabicDominant(text)) TextDirectionHeuristics.RTL else TextDirectionHeuristics.FIRSTSTRONG_LTR
+        val fixed = StaticLayout.Builder.obtain(text, 0, text.length, paint, 900).setTextDirection(dir).build()
+        assertThat(fixed.getParagraphDirection(0)).isEqualTo(Layout.DIR_RIGHT_TO_LEFT)
+    }
 }

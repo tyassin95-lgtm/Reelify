@@ -65,7 +65,7 @@ class PreviewViewModel(private val c: AppContainer, private val pid: String) : V
             .onFailure { e -> if (e is CancellationException) throw e; _ui.update { it.copy(building = false, buildError = e.message) } }
     }
 
-    fun edit(t: (EditSettings) -> EditSettings) = viewModelScope.launch { c.projects.updateEdit(pid, t) }
+    fun edit(t: (EditSettings) -> EditSettings) = viewModelScope.launch { c.projects.updateEdit(pid, transform = t) }
 
     fun aiEdit(request: String) {
         if (request.isBlank()) return
@@ -84,6 +84,8 @@ class PreviewViewModel(private val c: AppContainer, private val pid: String) : V
     }
 
     fun undoAi() { val prev = beforeAi ?: return; viewModelScope.launch { c.projects.updateEdit(pid) { prev }; beforeAi = null; _ui.update { it.copy(canUndoAi = false, aiSummary = null) } } }
+
+    fun resetToTemplate(group: app.reelify.core.model.EditGroup) = viewModelScope.launch { c.projects.resetEditToTemplate(pid, setOf(group)) }
 
     fun saveCaptionPreset(name: String) = viewModelScope.launch {
         val style = bundle.value?.project?.edit?.captions?.style ?: return@launch

@@ -22,6 +22,10 @@ import app.reelify.feature.create.SetupScreen
 import app.reelify.feature.editor.CaptionEditorScreen
 import app.reelify.feature.editor.TimelineEditorScreen
 import app.reelify.feature.export.ExportScreen
+import app.reelify.feature.flow.ChooseReelScreen
+import app.reelify.feature.flow.FilmScreen
+import app.reelify.feature.flow.MessageScreen
+import app.reelify.feature.flow.ScriptReviewScreen
 import app.reelify.feature.home.MainScreen
 import app.reelify.feature.home.SplashScreen
 import app.reelify.feature.preview.PreviewScreen
@@ -75,10 +79,36 @@ fun ReelifyNavHost(nav: NavHostController = rememberNavController()) {
         composable(Routes.CHECKLIST) { e -> val pid = e.arguments!!.getString("pid")!!
             ChecklistScreen(pid, onBack = back, onRecord = { sid, role -> nav.navigate(Routes.record(pid, sid, role)) }, onReview = { nav.navigate(Routes.review(pid)) }, onTrim = { cid -> nav.navigate(Routes.trim(cid)) })
         }
-        composable(Routes.RECORD, arguments = listOf(navArgument("role") { type = NavType.StringType; defaultValue = "PRIMARY" })) { e ->
+        composable(Routes.RECORD, arguments = listOf(
+            navArgument("role") { type = NavType.StringType; defaultValue = "PRIMARY" },
+            navArgument("muted") { type = NavType.BoolType; defaultValue = false },
+            navArgument("replace") { type = NavType.BoolType; defaultValue = false },
+        )) { e ->
             val pid = e.arguments!!.getString("pid")!!
-            RecordScreen(pid, e.arguments!!.getString("sid")!!, e.arguments!!.getString("role") ?: "PRIMARY", onBack = back,
-                onAccepted = { cid -> nav.navigate(Routes.trim(cid)) { popUpTo(Routes.RECORD) { inclusive = true } } })
+            RecordScreen(pid, e.arguments!!.getString("sid")!!, e.arguments!!.getString("role") ?: "PRIMARY", e.arguments!!.getBoolean("muted"), e.arguments!!.getBoolean("replace"), onBack = back,
+                onAccepted = { cid, templateProject ->
+                    // Template flow: straight back to the shot list. Legacy flow: trim step as before.
+                    if (templateProject) nav.popBackStack() else nav.navigate(Routes.trim(cid)) { popUpTo(Routes.RECORD) { inclusive = true } }
+                })
+        }
+        // ------------------------------------------------------------ Reelify 2.0 four-stage flow
+        composable(Routes.CHOOSE, arguments = listOf(navArgument("treatment") { type = NavType.StringType; defaultValue = "" }, navArgument("template") { type = NavType.StringType; defaultValue = "" })) { e ->
+            ChooseReelScreen(e.arguments?.getString("treatment"), e.arguments?.getString("template"), onBack = back,
+                onCreated = { pid -> projectModes[pid] = true; nav.navigate(Routes.message(pid)) { popUpTo(Routes.MAIN) } })
+        }
+        composable(Routes.MESSAGE) { e -> val pid = e.arguments!!.getString("pid")!!
+            MessageScreen(pid, onBack = back, onScriptReady = { nav.navigate(Routes.script2(pid)) { launchSingleTop = true } }, onEditTreatment = { nav.navigate(Routes.treatment(it)) })
+        }
+        composable(Routes.SCRIPT2) { e -> val pid = e.arguments!!.getString("pid")!!
+            ScriptReviewScreen(pid, onBack = back, onApproved = { nav.navigate(Routes.film(pid)) { launchSingleTop = true } },
+                onChangeTopic = { if (!nav.popBackStack(Routes.MESSAGE, false)) nav.navigate(Routes.message(pid)) })
+        }
+        composable(Routes.FILM) { e -> val pid = e.arguments!!.getString("pid")!!
+            FilmScreen(pid, onBack = back,
+                onRecord = { sid, role, muted, replace -> nav.navigate(Routes.record(pid, sid, role, muted, replace)) },
+                onTrim = { cid -> nav.navigate(Routes.trim(cid)) },
+                onPrepare = { nav.navigate(Routes.autoEdit(pid)) },
+                onScript = { nav.navigate(Routes.script2(pid)) { launchSingleTop = true } })
         }
         composable(Routes.REVIEW) { e -> val pid = e.arguments!!.getString("pid")!!
             FootageReviewScreen(pid, onBack = back,
@@ -89,18 +119,21 @@ fun ReelifyNavHost(nav: NavHostController = rememberNavController()) {
         composable(Routes.TRIM) { e -> TrimScreen(e.arguments!!.getString("cid")!!, onBack = back) }
         composable(Routes.AUTOEDIT, arguments = listOf(navArgument("force") { type = NavType.BoolType; defaultValue = false })) { e ->
             val pid = e.arguments!!.getString("pid")!!
+            RememberProjectMode(pid)
             AutoEditScreen(pid, force = e.arguments!!.getBoolean("force"), onBack = back,
                 onDone = { nav.navigate(Routes.preview(pid)) { popUpTo(Routes.autoEdit(pid)) { inclusive = true }; launchSingleTop = true } },
-                onFixFootage = { nav.navigate(Routes.review(pid)) { launchSingleTop = true } })
+                onFixFootage = { nav.navigateFootage(pid) })
         }
         composable(Routes.PREVIEW) { e -> val pid = e.arguments!!.getString("pid")!!
+            RememberProjectMode(pid)
             PreviewScreen(pid, onBack = back,
                 onAdvanced = { nav.navigate(Routes.editor(pid)) },
                 onCaptions = { nav.navigate(Routes.captions(pid)) },
-                onFootage = { nav.navigate(Routes.review(pid)) },
-                onScript = { nav.navigate(Routes.script(pid)) },
+                onFootage = { nav.navigateFootage(pid) },
+                onScript = { nav.navigateScript(pid) },
                 onExport = { nav.navigate(Routes.export(pid)) },
-                onRebuild = { nav.navigate(Routes.autoEdit(pid, force = true)) })
+                onRebuild = { nav.navigate(Routes.autoEdit(pid, force = true)) },
+                onTrim = { cid -> nav.navigate(Routes.trim(cid)) })
         }
         composable(Routes.EDITOR) { e -> TimelineEditorScreen(e.arguments!!.getString("pid")!!, onBack = back) }
         composable(Routes.CAPTIONS) { e -> CaptionEditorScreen(e.arguments!!.getString("pid")!!, onBack = back) }
@@ -114,11 +147,37 @@ fun ReelifyNavHost(nav: NavHostController = rememberNavController()) {
         composable(Routes.STORAGE) { StorageScreen(onBack = back) }
         composable(Routes.LIBRARY) { SoundLibraryScreen(onBack = back) }
         composable(Routes.LICENSES) { LicensesScreen(onBack = back) }
+        composable(Routes.IRAQI_STYLE) { app.reelify.feature.studio.IraqiStyleScreen(onBack = back) }
+        composable(Routes.TEMPLATES) { app.reelify.feature.studio.TemplatesScreen(onBack = back) }
     }
 }
 
+/** Template projects use the Film stage; legacy projects keep the footage review screen. */
+fun NavHostController.navigateFootage(pid: String) {
+    val tpl = projectModes[pid] ?: false
+    navigate(if (tpl) Routes.film(pid) else Routes.review(pid)) { launchSingleTop = true }
+}
+
+fun NavHostController.navigateScript(pid: String) {
+    val tpl = projectModes[pid] ?: false
+    navigate(if (tpl) Routes.script2(pid) else Routes.script(pid)) { launchSingleTop = true }
+}
+
+/** Cache of which projects are template-based (filled by openProject / creation; defaults to legacy). */
+internal val projectModes = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
 /** Opens the most relevant screen for a project given its progress. */
 fun NavHostController.openProject(p: app.reelify.core.model.Project) {
+    projectModes[p.id] = p.isTemplate
+    if (p.isTemplate) {
+        navigate(when {
+            p.status == app.reelify.core.model.ProjectStatus.EXPORTED || p.status == app.reelify.core.model.ProjectStatus.EDITING -> Routes.preview(p.id)
+            p.planApproved -> Routes.film(p.id)
+            p.script != null -> Routes.script2(p.id)
+            else -> Routes.message(p.id)
+        })
+        return
+    }
     val route = when {
         p.status == app.reelify.core.model.ProjectStatus.EXPORTED || p.status == app.reelify.core.model.ProjectStatus.EDITING -> Routes.preview(p.id)
         p.planApproved -> Routes.checklist(p.id)
@@ -127,4 +186,11 @@ fun NavHostController.openProject(p: app.reelify.core.model.Project) {
         else -> Routes.idea(p.id)
     }
     navigate(route)
+}
+
+/** Keeps [projectModes] correct even after process death (routes don't carry the mode). */
+@Composable
+private fun RememberProjectMode(pid: String) {
+    val c = app.reelify.feature.common.appContainer()
+    androidx.compose.runtime.LaunchedEffect(pid) { c.projects.getProject(pid)?.let { projectModes[pid] = it.isTemplate } }
 }

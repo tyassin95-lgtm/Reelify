@@ -27,6 +27,14 @@ import app.reelify.core.model.BeautyPreset
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.runBlocking
 import org.junit.Test
+import app.reelify.core.pipeline.AutoEditOptions
+import app.reelify.core.pipeline.AutoEditProgress
+import app.reelify.core.security.AiProvider
+import app.reelify.core.template.TemplateOverrides
+import app.reelify.core.template.ProductionPlanner
+import app.reelify.core.template.SectionScript
+import app.reelify.core.model.ScriptMeta
+import app.reelify.core.template.BuiltInTemplates
 import org.junit.runner.RunWith
 import java.io.File
 
@@ -105,4 +113,50 @@ class ExportPipelineTest {
     @Test fun export30sIraqiArabic() = renderAndValidate(ReelDuration.S30, ReelLanguage.IRAQI_ARABIC)
     @Test fun export45sEnglish() = renderAndValidate(ReelDuration.S45, ReelLanguage.ENGLISH)
     @Test fun export60sEnglish() = renderAndValidate(ReelDuration.S60, ReelLanguage.ENGLISH)
+
+    /**
+     * Reelify 2.0 path: template project → script via applyScript → the REAL AutoEditor (template
+     * rules, no AI, no Deepgram key → approximate captions) → export → validation.
+     */
+    @Test fun exportTemplateProject30sIraqiArabic() = runBlocking {
+        val c = app.container
+        val duration = ReelDuration.S30
+        val dir = File(ctx.cacheDir, "fixtures_tpl").apply { mkdirs() }
+        val template = BuiltInTemplates.THREE_THINGS
+        val p = c.projects.createFromTemplate(ReelLanguage.IRAQI_ARABIC, "aerolase", duration, template, "Template E2E")
+        c.projects.applyScript(p.id, ScriptMeta(topicTitle = "ثلاث شغلات", activeHook = "ثلاث شغلات لازم تعرفوهن."), listOf(
+            SectionScript(1, "ثلاث شغلات لازم تعرفوهن. أول شي: التقييم قبل كلشي.", "١. التقييم", listOf("التقييم")),
+            SectionScript(2, "ثاني شي: Aerolase يشتغل بنبضة قصيرة كلش.", "٢. النبضة", listOf("نبضة")),
+            SectionScript(3, "ثالث شي: واقي الشمس مو اختياري. احفظوا الفيديو.", "٣. الشمس", listOf("الشمس")),
+        ), "test")
+        val sections = c.projects.getBundle(p.id)!!.sections
+        sections.forEachIndexed { i, s ->
+            val f = FixtureMedia.clip(ctx, dir, "t$i", Color.rgb(70 + i * 30, 40, 60), duration.sectionMs / 1000.0 + 1)
+            val clip = c.importer.import(p.id, s.id, Uri.fromFile(f), ImportOptions(ClipRole.PRIMARY, beauty = ProductionPlanner.beautyFor(template, TemplateOverrides(), s.index, BeautySettings())), ClipOrigin.CAMERA, "video/mp4")
+            c.projects.upsertClip(clip.copy(trimStartMs = 500, trimEndMs = 500 + duration.sectionMs))
+        }
+        c.credentials.removeUserKey(AiProvider.DEEPGRAM)
+        var last: AutoEditProgress? = null
+        c.autoEditor.run(p.id, AutoEditOptions()).collect { last = it }
+        assertThat(last!!.error).isNull()
+        assertThat(last!!.done).isTrue()
+        val edited = c.projects.getProject(p.id)!!
+        // Template rules applied deterministically
+        assertThat(edited.edit.music.trackId).isEqualTo(ProductionPlanner.musicPreset(template).trackId)
+        assertThat(edited.edit.sfx.map { it.timeMs }).isEqualTo(ProductionPlanner.sfxCues(template, duration, 3000).map { it.timeMs })
+        assertThat(edited.edit.captions.style.preset).isEqualTo(template.captionPresetId)
+        assertThat(edited.edit.color.look).isEqualTo(template.colorLook)
+        assertThat(edited.captions!!.source).isEqualTo(CaptionSource.SCRIPT_ESTIMATE)
+        assertThat(edited.edit.captions.highlightKeywords).containsAtLeast("التقييم", "الشمس")
+
+        var inputs = c.preparer.inputs(p.id)
+        if (isEmulator) inputs = inputs.copy(width = 360, height = 640)
+        val built = c.compositionFactory.build(inputs, RenderPurpose.EXPORT)
+        val out = File(dir, "template_reel.mp4")
+        c.transformerRunner.export(built.composition, out, 3_000_000, audioOnly = false, maxDelayBetweenSamplesMs = if (isEmulator) 30 * 60_000L else 60_000L) { android.util.Log.w("ReelifyE2E", "template render $it%") }
+        val report = ExportValidator.validate(out, inputs.width, inputs.height, duration.totalMs, 30, expectAudio = true,
+            captionsExpected = true, captionFramesDrawn = built.overlayRenderer!!.captionRenders, overlaysExpected = true, overlayFramesDrawn = built.overlayRenderer!!.overlayRenders)
+        android.util.Log.w("ReelifyE2E", report.summary.joinToString(" | "))
+        assertThat(report.ok).isTrue()
+    }
 }

@@ -36,6 +36,15 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Subtitles
 import androidx.compose.material.icons.rounded.VideoLibrary
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.Face
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material.icons.rounded.ContentCut
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -97,8 +106,13 @@ private enum class QuickTab(val label: String) { AI("Ask AI"), CAPTIONS("Caption
 
 fun fmtTime(ms: Long) = "%d:%02d.%d".format(ms / 60000, (ms / 1000) % 60, (ms % 1000) / 100)
 
+private enum class Adjust(val en: String, val ar: String) {
+    CAPTIONS("Captions", "الترجمة"), MUSIC("Music", "الموسيقى"), BEAUTY("Beauty", "التجميل"), COLOR("Color", "الألوان"),
+    BRANDING("Branding", "الهوية"), REPLACE("Replace Shot", "استبدال لقطة"), TRIM("Trim Shot", "قص لقطة"), ALL("All controls", "كل الإعدادات")
+}
+
 @Composable
-fun PreviewScreen(pid: String, onBack: () -> Unit, onAdvanced: () -> Unit, onCaptions: () -> Unit, onFootage: () -> Unit, onScript: () -> Unit, onExport: () -> Unit, onRebuild: () -> Unit) {
+fun PreviewScreen(pid: String, onBack: () -> Unit, onAdvanced: () -> Unit, onCaptions: () -> Unit, onFootage: () -> Unit, onScript: () -> Unit, onExport: () -> Unit, onRebuild: () -> Unit, onTrim: (String) -> Unit = {}) {
     val vm = rfViewModel(pid) { PreviewViewModel(it, pid) }
     val bundle by vm.bundle.collectAsStateWithLifecycle()
     val ui by vm.ui.collectAsStateWithLifecycle()
@@ -108,49 +122,162 @@ fun PreviewScreen(pid: String, onBack: () -> Unit, onAdvanced: () -> Unit, onCap
     val playing by controller.playing.collectAsStateWithLifecycle()
     val playerError by controller.error.collectAsStateWithLifecycle()
     var pos by remember { mutableLongStateOf(0L) }
-    var tab by rememberSaveable { mutableStateOf(QuickTab.CAPTIONS) }
+    var adjust by remember { mutableStateOf<Adjust?>(null) }
+    var showAdjust by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(ui.composition) { ui.composition?.let { controller.set(it, controller.position()) } }
     LaunchedEffect(Unit) { while (true) { pos = controller.position(); delay(80) } }
     val b = bundle ?: return
     val total = b.project.duration.totalMs
 
-    ScreenFrame(b.project.title, onBack, subtitle = "${b.project.duration.label} reel preview", actions = {
-        IconButton(onAdvanced) { Icon(Icons.Rounded.ViewTimeline, "Advanced editor", tint = Rf.Text) }
+    ScreenFrame(b.project.title, onBack, subtitle = app.reelify.feature.common.tr("Step 4 of 4 · Preview & export", "الخطوة 4 من 4 · المعاينة والتصدير"), actions = {
+        GhostButton(app.reelify.feature.common.tr("Advanced", "متقدم"), onAdvanced, icon = Icons.Rounded.ViewTimeline, color = Rf.TextSecondary)
     }, bottomBar = {
         BottomActionBar {
-            SecondaryButton("Footage", onFootage, icon = Icons.Rounded.VideoLibrary)
+            SecondaryButton(app.reelify.feature.common.tr("Adjust", "تعديل"), { showAdjust = true; adjust = null }, icon = Icons.Rounded.Tune)
             PrimaryButton(s.export, onExport, Modifier.weight(1f), icon = Icons.Rounded.IosShare, enabled = ui.timeline?.isRenderable == true)
         }
     }) {
         Column(Modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 20.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
                 Box(Modifier.fillMaxHeight().aspectRatio(9f / 16f).clip(RoundedCornerShape(22.dp)).background(Color.Black).clickable { controller.toggle() }) {
                     PlayerSurface(controller, Modifier.fillMaxSize())
                     if (ui.building) Box(Modifier.align(Alignment.TopEnd).padding(10.dp)) { Spinner(22.dp) }
-                    if (!playing) Box(Modifier.align(Alignment.Center).size(64.dp).clip(CircleShape).background(Color(0x88000000)), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.PlayArrow, null, tint = Color.White, modifier = Modifier.size(36.dp)) }
+                    if (!playing) Box(Modifier.align(Alignment.Center).size(68.dp).clip(CircleShape).background(Color(0x88000000)), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.PlayArrow, null, tint = Color.White, modifier = Modifier.size(38.dp)) }
                 }
             }
-            Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
                 ui.buildError?.let { ErrorBanner(it) }
                 playerError?.let { ErrorBanner(it) }
                 ui.timeline?.blocking?.takeIf { it.isNotEmpty() }?.let { InfoBanner(it.joinToString("\n") { i -> i.message }, color = Rf.Warning) }
+                if (b.project.captions?.source == CaptionSource.SCRIPT_ESTIMATE && b.project.edit.captions.enabled) Text(
+                    app.reelify.feature.common.tr("Captions are approximate — estimated from the script, not transcribed.", "الترجمة تقريبية — مأخوذة من السكربت، مو من التفريغ الصوتي."),
+                    style = MaterialTheme.typography.labelMedium, color = Rf.Warning, modifier = Modifier.padding(bottom = 4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton({ controller.toggle() }) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = Rf.Text) }
                     Scrubber(pos, total, Modifier.weight(1f)) { controller.seek(it) }
                     Text(fmtTime(pos), style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 8.dp))
                 }
             }
-            LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(QuickTab.entries) { t -> Chip(t.label, t == tab, { tab = t }, leading = if (t == QuickTab.AI) Icons.Rounded.AutoAwesome else null) }
-            }
-            Box(Modifier.fillMaxWidth().height(250.dp)) {
-                Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    QuickPanel(tab, b, vm, ui, onCaptions, onScript, onRebuild)
-                }
-            }
         }
     }
+
+    if (showAdjust) ModalBottomSheet({ showAdjust = false }, containerColor = Rf.Surface) {
+        QuickAdjustSheet(b, vm, ui, adjust, { adjust = it }, onCaptions, onScript, onRebuild, onFootage = { showAdjust = false; onFootage() }, onTrim = { showAdjust = false; onTrim(it) })
+    }
+}
+
+/** Focused, simple adjustment panels; "All controls" keeps every previous setting available. */
+@Composable
+private fun QuickAdjustSheet(
+    b: ProjectBundle, vm: PreviewViewModel, ui: PreviewUi, current: Adjust?, onPick: (Adjust?) -> Unit,
+    onCaptions: () -> Unit, onScript: () -> Unit, onRebuild: () -> Unit, onFootage: () -> Unit, onTrim: (String) -> Unit,
+) {
+    val arabic = app.reelify.feature.common.LocalArabicUi.current
+    val e = b.project.edit
+    val tpl = b.project.template.takeIf { b.project.isTemplate }
+    Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (current != null) IconButton({ onPick(null) }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, null, tint = Rf.Text) }
+            Text(current?.let { if (arabic) it.ar else it.en } ?: app.reelify.feature.common.tr("Adjust", "تعديل"), style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+        }
+        if (current == null) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Adjust.entries.forEach { a ->
+                    Column(Modifier.width(96.dp).clip(RoundedCornerShape(18.dp)).background(Rf.Surface2).clickable { onPick(a) }.padding(vertical = 14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(adjustIcon(a), null, tint = Rf.RoseSoft)
+                        Spacer(Modifier.height(6.dp))
+                        Text(if (arabic) a.ar else a.en, style = MaterialTheme.typography.labelMedium, color = Rf.Text, maxLines = 1)
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            return@Column
+        }
+        fun resetRow(group: app.reelify.core.model.EditGroup): @Composable () -> Unit = {
+            if (tpl != null && group in e.userOverrides) GhostButton(app.reelify.feature.common.tr("Reset to template", "رجوع لإعدادات القالب"), { vm.resetToTemplate(group) }, icon = Icons.Rounded.Refresh)
+        }
+        when (current) {
+            Adjust.CAPTIONS -> {
+                ToggleRow(app.reelify.feature.common.tr("Captions", "الترجمة"), e.captions.enabled, { v -> vm.edit { it.copy(captions = it.captions.copy(enabled = v)) } },
+                    subtitle = when (b.project.captions?.source) {
+                        CaptionSource.DEEPGRAM -> app.reelify.feature.common.tr("Synced from transcription", "متزامنة من التفريغ الصوتي")
+                        CaptionSource.SCRIPT_ESTIMATE -> app.reelify.feature.common.tr("Approximate — estimated from the script", "تقريبية — من السكربت")
+                        CaptionSource.MANUAL -> app.reelify.feature.common.tr("Manually edited", "معدّلة يدوياً"); null -> app.reelify.feature.common.tr("Not generated yet", "ما انعملت بعد")
+                    })
+                val st = e.captions.style
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(CaptionPresetId.PREMIUM_MINIMAL, CaptionPresetId.BOLD_ENGAGEMENT, CaptionPresetId.CLEAN_CLINICAL).forEach { id ->
+                        Chip(id.label + if (tpl?.captionPresetId == id) " ★" else "", st.preset == id, { vm.edit { it.copy(captions = it.captions.copy(style = CaptionStyle.preset(id).copy(timingOffsetMs = st.timingOffsetMs))) } })
+                    }
+                }
+                LabeledSlider(app.reelify.feature.common.tr("Size", "الحجم"), st.sizeSp, { v -> vm.edit { it.copy(captions = it.captions.copy(style = st.copy(sizeSp = v, preset = CaptionPresetId.CUSTOM))) } }, range = 36f..96f, valueText = "${st.sizeSp.toInt()}")
+                SecondaryButton(app.reelify.feature.common.tr("Edit caption text", "تعديل نص الترجمة"), onCaptions, icon = Icons.Rounded.Subtitles)
+                resetRow(app.reelify.core.model.EditGroup.CAPTIONS)()
+            }
+            Adjust.MUSIC -> {
+                ToggleRow(app.reelify.feature.common.tr("Background music", "موسيقى خلفية"), e.music.trackId != null, { v -> vm.edit { it.copy(music = it.music.copy(trackId = if (v) (tpl?.let { t -> app.reelify.core.template.ProductionPlanner.musicPreset(t).trackId } ?: SoundLibrary.match(b.project.plan?.musicMood, 0.6f, true).id) else null)) } })
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SoundLibrary.music.forEach { t -> Chip(t.title + if (tpl != null && app.reelify.core.template.ProductionPlanner.musicPreset(tpl).trackId == t.id) " ★" else "", e.music.trackId == t.id, { vm.edit { it.copy(music = it.music.copy(trackId = t.id)) } }) }
+                }
+                LabeledSlider(app.reelify.feature.common.tr("Music volume", "صوت الموسيقى"), e.music.volume, { v -> vm.edit { it.copy(music = it.music.copy(volume = v)) } }, range = 0f..0.8f)
+                resetRow(app.reelify.core.model.EditGroup.MUSIC)()
+            }
+            Adjust.BEAUTY -> {
+                Text(app.reelify.feature.common.tr("Applies to talking shots only. Treatment footage is never beautified.", "ينطبق على لقطات الكلام فقط. لقطات العلاج ما تتجمّل أبداً."), style = MaterialTheme.typography.bodySmall)
+                val talking = b.clips.filter { !it.isClinical && it.role == app.reelify.core.model.ClipRole.PRIMARY && it.kind == app.reelify.core.model.MediaKind.VIDEO && !it.muted }
+                val currentB = talking.firstOrNull()?.beauty
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Chip(app.reelify.feature.common.tr("Off", "إطفاء"), currentB?.enabled == false, { vm.applyBeautyToTalkingClips(BeautySettings(enabled = false)) })
+                    BeautyPreset.entries.filter { it != BeautyPreset.CUSTOM }.forEach { p -> Chip(p.label, currentB?.enabled == true && currentB.preset == p, { vm.applyBeautyToTalkingClips(BeautySettings.forPreset(p, currentB?.intensity ?: 0.7f)) }) }
+                }
+                if (currentB?.enabled == true) LabeledSlider(app.reelify.feature.common.tr("Intensity", "الشدة"), currentB.intensity, { v -> vm.applyBeautyToTalkingClips(currentB.copy(intensity = v)) })
+            }
+            Adjust.COLOR -> {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ColorLook.entries.forEach { l -> Chip(l.label + if (tpl?.colorLook == l) " ★" else "", e.color.look == l, { vm.edit { it.copy(color = it.color.copy(look = l)) } }) }
+                }
+                LabeledSlider(app.reelify.feature.common.tr("Look intensity", "شدة اللون"), e.color.intensity, { v -> vm.edit { it.copy(color = it.color.copy(intensity = v)) } })
+                resetRow(app.reelify.core.model.EditGroup.COLOR)()
+            }
+            Adjust.BRANDING -> {
+                val br = e.branding
+                ToggleRow(app.reelify.feature.common.tr("Branding", "الهوية"), br.enabled, { v -> vm.edit { it.copy(branding = br.copy(enabled = v)) } }, subtitle = if (b.project.brandSnapshot?.isConfigured == true) null else app.reelify.feature.common.tr("Set up your brand in Studio → Branding", "جهّز هويتك من الاستوديو ← الهوية"))
+                ToggleRow(app.reelify.feature.common.tr("Logo watermark", "شعار"), br.watermark, { v -> vm.edit { it.copy(branding = br.copy(watermark = v)) } })
+                ToggleRow(app.reelify.feature.common.tr("Name lower-third", "اسم المقدم"), br.lowerThird, { v -> vm.edit { it.copy(branding = br.copy(lowerThird = v)) } })
+                ToggleRow(app.reelify.feature.common.tr("Call to action at the end", "دعوة بالنهاية"), br.ctaOverlay, { v -> vm.edit { it.copy(branding = br.copy(ctaOverlay = v)) } })
+                ToggleRow(app.reelify.feature.common.tr("Logo reveal outro", "ظهور الشعار بالنهاية"), br.logoReveal, { v -> vm.edit { it.copy(branding = br.copy(logoReveal = v)) } })
+                resetRow(app.reelify.core.model.EditGroup.BRANDING)()
+            }
+            Adjust.REPLACE -> {
+                Text(app.reelify.feature.common.tr("Open the shot list to retake or re-import a shot.", "افتح قائمة اللقطات حتى تعيد تصوير أو تستورد لقطة."), style = MaterialTheme.typography.bodySmall)
+                PrimaryButton(app.reelify.feature.common.tr("Open shot list", "افتح اللقطات"), onFootage, Modifier.fillMaxWidth(), icon = Icons.Rounded.VideoLibrary)
+            }
+            Adjust.TRIM -> {
+                b.sections.sortedBy { it.index }.forEach { sec ->
+                    val clip = b.clipsFor(sec.id, app.reelify.core.model.ClipRole.PRIMARY).firstOrNull { it.kind == app.reelify.core.model.MediaKind.VIDEO }
+                    SecondaryButton(app.reelify.feature.common.tr("Trim shot ${sec.index}", "قص اللقطة ${sec.index}"), { clip?.let { onTrim(it.id) } }, Modifier.fillMaxWidth(), icon = Icons.Rounded.ContentCut, enabled = clip != null)
+                }
+            }
+            Adjust.ALL -> QuickPanelTabs(b, vm, ui, onCaptions, onScript, onRebuild)
+        }
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+private fun adjustIcon(a: Adjust) = when (a) {
+    Adjust.CAPTIONS -> Icons.Rounded.Subtitles; Adjust.MUSIC -> Icons.Rounded.MusicNote; Adjust.BEAUTY -> Icons.Rounded.Face
+    Adjust.COLOR -> Icons.Rounded.Palette; Adjust.BRANDING -> Icons.Rounded.Verified; Adjust.REPLACE -> Icons.Rounded.VideoLibrary
+    Adjust.TRIM -> Icons.Rounded.ContentCut; Adjust.ALL -> Icons.Rounded.Tune
+}
+
+@Composable
+private fun QuickPanelTabs(b: ProjectBundle, vm: PreviewViewModel, ui: PreviewUi, onCaptions: () -> Unit, onScript: () -> Unit, onRebuild: () -> Unit) {
+    var tab by rememberSaveable { mutableStateOf(QuickTab.CAPTIONS) }
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(QuickTab.entries) { t -> Chip(t.label, t == tab, { tab = t }, leading = if (t == QuickTab.AI) Icons.Rounded.AutoAwesome else null) }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { QuickPanel(tab, b, vm, ui, onCaptions, onScript, onRebuild) }
 }
 
 @Composable

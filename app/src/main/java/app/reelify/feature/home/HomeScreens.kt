@@ -187,7 +187,7 @@ private fun HomeTab(nav: NavHostController) {
                 Icon(Icons.Rounded.Settings, s.settings, tint = Rf.TextSecondary, modifier = Modifier.clip(CircleShape).clickable { nav.navigate(Routes.AI_SETTINGS) }.padding(8.dp))
             }
         }
-        item { HeroCard(s.createReel, s.createReelSub) { nav.navigate(Routes.setup()) } }
+        item { HeroCard(s.createReel, s.createReelSub) { nav.navigate(Routes.choose()) } }
         if (creds.values.any { !it.configured }) item {
             val missing = creds.values.filter { !it.configured }.joinToString(" & ") { it.provider.label }
             Row(
@@ -232,7 +232,7 @@ private fun HomeTab(nav: NavHostController) {
                     Column(
                         Modifier.width(150.dp).height(112.dp).clip(RoundedCornerShape(20.dp))
                             .background(Brush.linearGradient(listOf(Color(t.accentColor).copy(alpha = 0.55f), Rf.Surface)))
-                            .border(1.dp, Rf.Border, RoundedCornerShape(20.dp)).clickable { nav.navigate(Routes.setup(treatment = t.id)) }.padding(14.dp),
+                            .border(1.dp, Rf.Border, RoundedCornerShape(20.dp)).clickable { nav.navigate(Routes.choose(treatment = t.id)) }.padding(14.dp),
                         verticalArrangement = Arrangement.SpaceBetween,
                     ) {
                         Icon(Icons.Rounded.AutoAwesome, null, tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(20.dp))
@@ -247,12 +247,12 @@ private fun HomeTab(nav: NavHostController) {
         item { SectionHeader(s.templates, Modifier.padding(start = 20.dp, end = 8.dp, top = 12.dp)) }
         item {
             LazyRow(contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(ReelStyle.entries) { st ->
-                    CinematicCard(Modifier.width(170.dp), onClick = { nav.navigate(Routes.setup(style = st.wire)) }) {
-                        Icon(Icons.Rounded.Dashboard, null, tint = Rf.RoseSoft)
-                        Spacer(Modifier.height(10.dp))
-                        Text(st.label, style = MaterialTheme.typography.titleSmall)
-                        Text(st.blurb, style = MaterialTheme.typography.bodySmall)
+                items(app.reelify.core.template.BuiltInTemplates.all, key = { it.id }) { tp ->
+                    Column(Modifier.width(176.dp).clip(RoundedCornerShape(20.dp)).clickable { nav.navigate(Routes.choose(template = tp.id)) }) {
+                        app.reelify.core.designsystem.TemplateThumbnail(tp, Modifier.fillMaxWidth().height(112.dp))
+                        Spacer(Modifier.height(8.dp))
+                        Text(tp.name.resolve(app.reelify.feature.common.LocalArabicUi.current), style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                        Text(tp.description.resolve(app.reelify.feature.common.LocalArabicUi.current), style = MaterialTheme.typography.bodySmall, maxLines = 2)
                     }
                 }
             }

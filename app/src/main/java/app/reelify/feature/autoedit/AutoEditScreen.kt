@@ -54,18 +54,24 @@ fun AutoEditScreen(pid: String, force: Boolean, onBack: () -> Unit, onDone: () -
     val c = appContainer()
     var state by remember { mutableStateOf(AutoEditProgress(AutoEditStage.VALIDATE)) }
     var runId by remember { mutableIntStateOf(0) }
+    var retryCaptions by remember { mutableStateOf(false) }
     LaunchedEffect(runId) {
-        c.autoEditor.run(pid, AutoEditOptions(forceRetranscribe = force && runId == 0)).collect { state = it }
+        c.autoEditor.run(pid, AutoEditOptions(forceRetranscribe = (force && runId == 0) || retryCaptions)).collect { state = it }
     }
+    val transcriptionFailed = state.warnings.any { it.startsWith("Transcription unavailable") }
     LaunchedEffect(state.done) { if (state.done && state.warnings.isEmpty()) { delay(700); onDone() } }
     val stages = AutoEditStage.entries.filter { it != AutoEditStage.DONE }
-    ScreenFrame("Automatic editing", onBack, subtitle = "Real processing on this device", bottomBar = {
+    ScreenFrame(app.reelify.feature.common.tr("Preparing your reel", "نجهّز الريل"), onBack, subtitle = app.reelify.feature.common.tr("Step 4 of 4 · processed on this phone", "الخطوة 4 من 4 · المعالجة على التلفون"), bottomBar = {
         BottomActionBar {
             when {
-                state.done -> PrimaryButton("Open preview", onDone, Modifier.weight(1f))
-                state.error != null && state.issues.any { it.blocking } -> PrimaryButton("Fix footage", onFixFootage, Modifier.weight(1f))
-                state.error != null -> PrimaryButton("Retry", { runId++ }, Modifier.weight(1f), icon = Icons.Rounded.Refresh)
-                else -> SecondaryButton("Cancel", onBack, Modifier.weight(1f))
+                state.done && transcriptionFailed -> {
+                    SecondaryButton(app.reelify.feature.common.tr("Retry captions", "إعادة الترجمة"), { retryCaptions = true; runId++ }, icon = Icons.Rounded.Refresh)
+                    PrimaryButton(app.reelify.feature.common.tr("Open preview", "افتح المعاينة"), onDone, Modifier.weight(1f))
+                }
+                state.done -> PrimaryButton(app.reelify.feature.common.tr("Open preview", "افتح المعاينة"), onDone, Modifier.weight(1f))
+                state.error != null && state.issues.any { it.blocking } -> PrimaryButton(app.reelify.feature.common.tr("Fix footage", "صلّح اللقطات"), onFixFootage, Modifier.weight(1f))
+                state.error != null -> PrimaryButton(app.reelify.feature.common.tr("Retry", "إعادة المحاولة"), { runId++ }, Modifier.weight(1f), icon = Icons.Rounded.Refresh)
+                else -> SecondaryButton(app.reelify.feature.common.tr("Cancel", "إلغاء"), onBack, Modifier.weight(1f))
             }
         }
     }) {

@@ -15,7 +15,7 @@ data class UiStrings(
     companion object {
         val English = UiStrings(
             "Home", "Projects", "Studio", "Settings",
-            "Create New Reel", "From idea to finished reel — directed by AI", "Continue", "Recent projects",
+            "Create New Reel", "Pick a template, choose a topic, film three shots", "Continue", "Recent projects",
             "Treatments", "Templates", "Continue", "Back", "Analyze Idea",
             "Generate Script", "Approve Plan", "Record", "Import",
             "Edit Automatically", "Export", "Share", "Retry", "Cancel", "Save",
@@ -23,7 +23,7 @@ data class UiStrings(
         )
         val Arabic = UiStrings(
             "الرئيسية", "المشاريع", "الاستوديو", "الإعدادات",
-            "ريل جديد", "من الفكرة إلى ريل جاهز — بإخراج الذكاء الاصطناعي", "متابعة", "المشاريع الأخيرة",
+            "ريل جديد", "اختار قالب، اختار موضوع، وصوّر ثلاث لقطات", "متابعة", "المشاريع الأخيرة",
             "العلاجات", "القوالب", "التالي", "رجوع", "حلّل الفكرة",
             "اكتب السكربت", "اعتماد الخطة", "تسجيل", "استيراد",
             "مونتاج تلقائي", "تصدير", "مشاركة", "إعادة المحاولة", "إلغاء", "حفظ",
@@ -33,6 +33,16 @@ data class UiStrings(
 }
 
 val LocalStrings = staticCompositionLocalOf { UiStrings.English }
+
+/** True when the interface (not the reel) is in Arabic. */
+val LocalArabicUi = staticCompositionLocalOf { false }
+
+/** Inline bilingual UI copy for Reelify 2.0 screens. */
+@Composable
+fun tr(en: String, ar: String): String = if (LocalArabicUi.current) ar else en
+
+@Composable
+fun app.reelify.core.template.LocalizedText.text(): String = resolve(LocalArabicUi.current)
 
 @Composable
 fun strings(): UiStrings = LocalStrings.current

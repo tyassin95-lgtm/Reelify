@@ -1,8 +1,12 @@
-# Reelify — AI reel production studio (Android)
+# Reelify 2.0 — template-first reel studio (Android)
 
-Reelify is a native Android app (Kotlin + Jetpack Compose) that takes a skin‑treatment specialist
-from **idea → AI script & shot plan → guided filming → automatic editing → exported reel**.
-Every reel is exactly **30, 45 or 60 seconds**, built from **three equal sections**.
+Reelify is a native Android app (Kotlin + Jetpack Compose) for a skin‑treatment specialist:
+**choose a template → pick a topic → film three planned shots → export a branded reel**.
+Every reel is exactly **30, 45 or 60 seconds**, built from **three equal shots**.
+
+**2.0:** filming and editing come from **versioned production templates** (six built-in formats).
+The AI writes only words — fresh angles, three distinct hooks, dialogue and headlines, with a
+dedicated Iraqi Arabic scriptwriter. See [`docs/REELIFY_V2_DESIGN.md`](docs/REELIFY_V2_DESIGN.md).
 
 * **No backend, no account.** Projects, media and settings stay on the device. The only network
   calls go directly from the phone to **OpenAI** (Responses API, text only) and **Deepgram**
@@ -134,17 +138,21 @@ Clean Educational) and you can save your own.
 
 ## Using Reelify (summary)
 
-1. **Create New Reel** → language (English / Iraqi Arabic), treatment, length, style.
-2. **Describe the idea** → *Analyze Idea* → edit the AI's hook/angle/audience/cautions.
-3. **Generate Script** → three section cards with timing fit, direction, B‑roll, on‑screen text.
-   Edit, lock, change shot type, regenerate one section (before/after compare, Accept/Retry/Cancel,
-   undo), review claims, **Approve Plan**.
-4. **Production checklist** → per section choose record / import / B‑roll / still / voiceover.
-5. **Record** with teleprompter, framing/level/safe‑zone guides, countdown and beauty preview —
-   recordings are never cut at the section length; trim afterwards (speech‑aware suggestion).
-6. **Footage review** → fix any gaps (B‑roll, retake, still, branded card), confirm consent.
-7. **Edit Automatically** → face analysis, dialogue extraction, Deepgram transcription,
-   terminology correction, synced captions, music/SFX selection, branding.
-8. **Preview** → quick adjustments (captions, music, transitions, colour, beauty, branding, audio,
-   effects) or *Ask AI* ("make it more cinematic"); **Advanced editor** for the timeline.
-9. **Export** → 1080×1920 H.264/AAC MP4, validated, saved to *Movies/Reelify*, shared via Android.
+1. **Choose your reel** — treatment, English / Iraqi Arabic, 30/45/60 s, template (Expert
+   Explains, Myth Buster, Treatment Showcase, Three Things to Know, Common Patient Question,
+   Problem / Approach). Your last choices are remembered.
+2. **Choose your message** — tap a suggested topic, *Surprise me with a fresh idea*, or type one
+   line. The script appears straight away: pick one of three hooks, use the chips (*Try different
+   hook*, *More engaging*, *More natural Iraqi*, *Shorten*, *More professional*), edit / lock /
+   undo any shot, then **Use This Script**.
+3. **Film your reel** — three shot cards with one instruction each. Record (camera opens with the
+   template's camera, teleprompter and beauty preset) or import; voiceover shots take footage +
+   voice. Accepting a take returns to the list.
+4. **Preview & export** — Reelify edits automatically with the template's captions, music, SFX,
+   transitions, colour and branding (your own changes always win), then shows a full preview:
+   **Export**, **Adjust** (captions, music, beauty, colour, branding, replace/trim shot) or
+   **Advanced** (the full timeline editor).
+
+Studio → *Iraqi style guide*: approve or correct the reference lines that teach the AI your
+voice. Studio → *Templates*: customise a copy of any template. Projects created with Reelify 1.x
+open in their original (legacy) workflow with their settings unchanged.

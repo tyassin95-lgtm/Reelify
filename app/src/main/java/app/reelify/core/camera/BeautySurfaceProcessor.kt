@@ -32,13 +32,20 @@ import java.util.concurrent.Executor
  * parameters and on-device face tracking, when the reel is rendered — so preview and output match
  * while the original footage remains editable.
  */
-class BeautySurfaceProcessor : SurfaceProcessor {
+class BeautySurfaceProcessor(private val onFailure: (String) -> Unit = {}) : SurfaceProcessor {
     private val thread = HandlerThread("ReelifyCameraGL").apply { start() }
     private val handler = Handler(thread.looper)
     val executor: Executor = Executor { handler.post(it) }
 
     @Volatile var params: ShaderParams = ShaderParams()
     @Volatile var face: FaceUniform? = null
+    /** Face-up direction in texture space (depends on sensor rotation). */
+    @Volatile var up: Pair<Float, Float> = 0f to 1f
+    /** Hold-to-compare: renders the untouched frame through the same pipeline. */
+    @Volatile var bypass: Boolean = false
+    /** Frames actually rendered through the beauty shader (proof the effect is running). */
+    @Volatile var framesRendered: Long = 0; private set
+    @Volatile var glError: String? = null; private set
 
     private var display: EGLDisplay = EGL14.EGL_NO_DISPLAY
     private var context: EGLContext = EGL14.EGL_NO_CONTEXT
@@ -53,7 +60,14 @@ class BeautySurfaceProcessor : SurfaceProcessor {
     private val outputs = LinkedHashMap<SurfaceOutput, Pair<Surface, EGLSurface>>()
     private var released = false
 
-    init { handler.post { initGl() } }
+    init {
+        handler.post {
+            try { initGl() } catch (t: Throwable) {
+                glError = "Beauty shader couldn't start on this GPU (${t.javaClass.simpleName})."
+                onFailure(glError!!)
+            }
+        }
+    }
 
     private fun initGl() {
         display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
@@ -83,7 +97,7 @@ class BeautySurfaceProcessor : SurfaceProcessor {
     }
 
     override fun onInputSurface(request: SurfaceRequest) {
-        if (released) { request.willNotProvideSurface(); return }
+        if (released || glError != null || program == null) { request.willNotProvideSurface(); glError?.let(onFailure); return }
         val st = SurfaceTexture(oesTex)
         inputSize = request.resolution
         st.setDefaultBufferSize(request.resolution.width, request.resolution.height)
@@ -109,7 +123,8 @@ class BeautySurfaceProcessor : SurfaceProcessor {
         st.updateTexImage()
         st.getTransformMatrix(texMatrix)
         val prog = program ?: return
-        val p = params; val f = face
+        val p = params; val f = face; val upV = up; val bp = bypass
+        var drew = false
         for ((out, pair) in outputs) {
             out.updateTransformMatrix(surfaceMatrix, texMatrix)
             val egl = pair.second
@@ -120,13 +135,18 @@ class BeautySurfaceProcessor : SurfaceProcessor {
                 prog.use()
                 prog.setFloatsUniform("uTexTransformationMatrix", surfaceMatrix)
                 prog.setSamplerTexIdUniform("uTexSampler", oesTex, 0)
-                BeautyUniforms.apply(prog, p, f, size.width, size.height)
+                // The shader samples the INPUT camera texture, so texel size / aspect come from it.
+                BeautyUniforms.apply(prog, p, f, inputSize.width, inputSize.height, upV, bp)
                 prog.bindAttributesAndUniforms()
                 GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
+                drew = true
+            }.onFailure { e ->
+                if (glError == null) { glError = "Beauty rendering failed (${e.javaClass.simpleName})."; onFailure(glError!!) }
             }
             EGLExt.eglPresentationTimeANDROID(display, egl, st.timestamp)
             EGL14.eglSwapBuffers(display, egl)
         }
+        if (drew) framesRendered++
     }
 
     fun release() {
