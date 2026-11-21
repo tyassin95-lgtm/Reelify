@@ -94,7 +94,8 @@ fun TeleprompterPanel(
             }
         }
     }
-    val arabic = text.count { it in '؀'..'ۿ' } > text.length / 5
+    val safe = androidx.compose.runtime.remember(text) { app.reelify.core.content.GeneratedContentNormalizer.displaySafe(text) }
+    val arabic = app.reelify.core.content.GeneratedContentNormalizer.isArabicDominant(safe)
     val lead = height * 0.30f
     Box(
         modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(20.dp)).background(Color.Black.copy(alpha = opacity.coerceIn(0.15f, 0.9f)))
@@ -102,7 +103,7 @@ fun TeleprompterPanel(
             .semantics { contentDescription = "Teleprompter" },
     ) {
         Text(
-            text,
+            safe,
             modifier = Modifier.fillMaxSize()
                 .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen; scaleX = if (mirror) -1f else 1f }
                 .drawWithContent {
@@ -116,7 +117,7 @@ fun TeleprompterPanel(
             style = MaterialTheme.typography.headlineSmall.copy(
                 fontSize = sizeSp.sp, lineHeight = (sizeSp * 1.5f).sp, color = Color.White,
                 fontFamily = if (arabic) Tajawal else MaterialTheme.typography.headlineSmall.fontFamily,
-                textDirection = TextDirection.Content, textAlign = if (arabic) TextAlign.Right else TextAlign.Center,
+                textDirection = if (arabic) TextDirection.Rtl else TextDirection.Content, textAlign = TextAlign.Center,
             ),
         )
         // reading line

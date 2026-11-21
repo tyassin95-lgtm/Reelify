@@ -124,6 +124,30 @@ object GeneratedContentNormalizer {
         return NormalizedText(s, issues.distinct())
     }
 
+    /**
+     * Minimal, non-destructive display filter for text already stored (user-edited or legacy):
+     * drops only characters that can never render meaningfully (U+FFFD, BOM, zero-width space,
+     * C0/C1 controls, directional overrides). Use [normalize] for new AI output.
+     */
+    fun displaySafe(text: String): String {
+        if (text.none { it == '\uFFFD' || it in removeAlways || (it.code < 0x20 && it != '\n') || it.code in 0x7F..0x9F }) return text
+        return buildString(text.length) {
+            for (ch in text) if (!(ch == '\uFFFD' || ch in removeAlways || (ch.code < 0x20 && ch != '\n') || ch.code in 0x7F..0x9F)) append(ch)
+        }
+    }
+
+    /** Arabic-script letters vs Latin letters. Paragraph direction must follow the DOMINANT script, not the first letter. */
+    fun isArabicDominant(text: String): Boolean {
+        var ar = 0; var la = 0
+        for (ch in text) {
+            if (ch in '\u0600'..'\u06FF' || ch in '\u0750'..'\u077F' || ch in '\uFB50'..'\uFDFF' || ch in '\uFE70'..'\uFEFC') ar++
+            else if (ch in 'a'..'z' || ch in 'A'..'Z') la++
+        }
+        return ar > 0 && ar >= la
+    }
+
+    fun containsArabic(text: String): Boolean = text.any { it in '\u0600'..'\u06FF' || it in '\u0750'..'\u077F' }
+
     fun clean(raw: String, field: TextField = TextField.SPOKEN, protectedTerms: Collection<String> = emptyList()): String =
         normalize(raw, field, protectedTerms).text
 

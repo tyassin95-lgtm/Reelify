@@ -147,7 +147,9 @@ class ReelOverlayRenderer(private val m: OverlayModel, private val fonts: ReelFo
     private fun layout(text: CharSequence, paint: TextPaint, width: Int, align: Layout.Alignment, spacing: Float = 1.08f): StaticLayout =
         StaticLayout.Builder.obtain(text, 0, text.length, paint, width.coerceAtLeast(10))
             .setAlignment(align)
-            .setTextDirection(TextDirectionHeuristics.FIRSTSTRONG_LTR)
+            // Direction follows the dominant script: an Arabic line that starts with a Latin device
+            // name ("Aerolase يشتغل…") must still be laid out right-to-left.
+            .setTextDirection(if (app.reelify.core.content.GeneratedContentNormalizer.isArabicDominant(text.toString())) TextDirectionHeuristics.RTL else TextDirectionHeuristics.FIRSTSTRONG_LTR)
             .setLineSpacing(0f, spacing)
             .setIncludePad(false)
             .setBreakStrategy(Layout.BREAK_STRATEGY_BALANCED)

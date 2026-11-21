@@ -147,6 +147,8 @@ fun ReelifyNavHost(nav: NavHostController = rememberNavController()) {
         composable(Routes.STORAGE) { StorageScreen(onBack = back) }
         composable(Routes.LIBRARY) { SoundLibraryScreen(onBack = back) }
         composable(Routes.LICENSES) { LicensesScreen(onBack = back) }
+        composable(Routes.IRAQI_STYLE) { app.reelify.feature.studio.IraqiStyleScreen(onBack = back) }
+        composable(Routes.TEMPLATES) { app.reelify.feature.studio.TemplatesScreen(onBack = back) }
     }
 }
 

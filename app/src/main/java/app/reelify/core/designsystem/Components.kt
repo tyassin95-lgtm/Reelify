@@ -410,7 +410,7 @@ fun ReelTextField(
         if (label != null) { Text(label, style = MaterialTheme.typography.labelMedium, color = Rf.TextSecondary); Spacer(Modifier.height(6.dp)) }
         BasicTextField(
             value = local, onValueChange = { local = it; lastSent = it; onChange(it) }, singleLine = singleLine, minLines = minLines, maxLines = if (singleLine) 1 else maxLines,
-            textStyle = textStyle.copy(color = Rf.Text, textDirection = TextDirection.Content, fontFamily = if (value.any { it in '؀'..'ۿ' }) Tajawal else textStyle.fontFamily),
+            textStyle = textStyle.copy(color = Rf.Text, textDirection = if (app.reelify.core.content.GeneratedContentNormalizer.isArabicDominant(local)) TextDirection.Rtl else TextDirection.Content, fontFamily = if (local.any { it in '؀'..'ۿ' }) Tajawal else textStyle.fontFamily),
             cursorBrush = SolidColor(Rf.Rose), keyboardOptions = keyboardOptions, visualTransformation = visualTransformation,
             modifier = Modifier.fillMaxWidth(),
             decorationBox = { inner ->
@@ -423,13 +423,25 @@ fun ReelTextField(
     }
 }
 
-/** Auto-direction text for mixed Arabic/English content. */
+/**
+ * Mixed Arabic/English text. Paragraph direction follows the DOMINANT script (an Iraqi line that
+ * starts with "Aerolase" is still RTL); any Arabic letter selects Tajawal, which also contains
+ * Latin glyphs, so mixed lines never fall back to an inconsistent system font. Only characters
+ * that can never render (U+FFFD, BOM, overrides, controls) are filtered for display.
+ */
 @Composable
 fun ScriptText(text: String, modifier: Modifier = Modifier, style: TextStyle = MaterialTheme.typography.bodyLarge, maxLines: Int = Int.MAX_VALUE) {
-    val arabic = text.count { it in '؀'..'ۿ' } > text.length / 4
+    val safe = remember(text) { app.reelify.core.content.GeneratedContentNormalizer.displaySafe(text) }
+    val dominant = remember(safe) { app.reelify.core.content.GeneratedContentNormalizer.isArabicDominant(safe) }
+    val anyArabic = remember(safe) { app.reelify.core.content.GeneratedContentNormalizer.containsArabic(safe) }
     Text(
-        text, modifier = modifier, maxLines = maxLines, overflow = TextOverflow.Ellipsis,
-        style = style.copy(textDirection = TextDirection.Content, fontFamily = if (arabic) Tajawal else style.fontFamily, textAlign = if (arabic) TextAlign.Right else TextAlign.Start, lineHeight = if (arabic) style.fontSize * 1.65f else style.lineHeight),
+        safe, modifier = modifier, maxLines = maxLines, overflow = TextOverflow.Ellipsis,
+        style = style.copy(
+            textDirection = if (dominant) TextDirection.Rtl else TextDirection.Content,
+            fontFamily = if (anyArabic) Tajawal else style.fontFamily,
+            textAlign = TextAlign.Start,
+            lineHeight = if (anyArabic) style.fontSize * 1.6f else style.lineHeight,
+        ),
     )
 }
 

@@ -219,6 +219,7 @@ fun AiSettingsScreen(onBack: () -> Unit) {
                     GhostButton("Reset defaults", { model = app.reelify.BuildConfig.DEFAULT_OPENAI_MODEL; dgModel = app.reelify.BuildConfig.DEFAULT_DEEPGRAM_MODEL })
                 }
                 ToggleRow("Send terminology as Deepgram keyterms", settings.sendKeytermsToDeepgram, { v -> scope.launch { c.settings.update { it.copy(sendKeytermsToDeepgram = v) } } }, subtitle = "Improves recognition of device names (retries without if unsupported).")
+                ToggleRow("AI editorial review after each script", settings.aiEditorialReview, { v -> scope.launch { c.settings.update { it.copy(aiEditorialReview = v) } } }, subtitle = "One extra request that scores naturalness & engagement and lists issues. Advisory only.")
             }
         }
     }
