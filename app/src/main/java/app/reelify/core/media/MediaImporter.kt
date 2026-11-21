@@ -43,7 +43,7 @@ class MediaImporter(
         var trimEnd = info.durationMs
         if (info.kind == MediaKind.VIDEO && opts.role == ClipRole.PRIMARY && info.durationMs > sectionMs) {
             // Smart default trim using speech/silence cues; the user can adjust in the trim screen.
-            val env = if (info.hasAudio) analyzer.envelope(storage.toUri(ref)) else null
+            val env = if (info.hasAudio && !opts.muteOriginal) analyzer.envelope(storage.toUri(ref)) else null
             if (env != null) {
                 val s = SpeechAnalysis.suggestTrim(env, info.durationMs, sectionMs)
                 trimStart = s.startMs; trimEnd = s.endMs

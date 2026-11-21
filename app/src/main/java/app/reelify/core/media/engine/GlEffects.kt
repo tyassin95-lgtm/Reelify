@@ -15,7 +15,15 @@ import app.reelify.core.model.TransitionType
 
 /** Uniform upload shared by the camera renderer and the Media3 program. */
 object BeautyUniforms {
-    fun apply(p: GlProgram, s: ShaderParams, face: FaceUniform?, width: Int, height: Int) {
+    /**
+     * @param width/height size of the SAMPLED texture (texel size + aspect for face ellipses).
+     * @param up "face up" direction in aspect-corrected texture space: (0,1) for upright frames;
+     *   rotated for raw camera textures (see CameraFaceMapping.upVector).
+     */
+    fun apply(p: GlProgram, s: ShaderParams, face: FaceUniform?, width: Int, height: Int, up: Pair<Float, Float> = 0f to 1f, bypass: Boolean = false) {
+        p.setFloatsUniform("uUp", floatArrayOf(up.first, up.second))
+        p.setFloatUniform("uGlow", s.glow)
+        p.setFloatUniform("uBypass", if (bypass) 1f else 0f)
         p.setFloatsUniform("uTexel", floatArrayOf(1f / width, 1f / height))
         p.setFloatUniform("uScale", (minOf(width, height) / 1080f).coerceAtLeast(0.35f))
         p.setFloatUniform("uAspect", width.toFloat() / height)

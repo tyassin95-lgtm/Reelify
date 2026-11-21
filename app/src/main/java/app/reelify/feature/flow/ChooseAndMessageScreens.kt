@@ -1,0 +1,279 @@
+package app.reelify.feature.flow
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.reelify.core.designsystem.BottomActionBar
+import app.reelify.core.designsystem.ErrorBanner
+import app.reelify.core.designsystem.Eyebrow
+import app.reelify.core.designsystem.InfoBanner
+import app.reelify.core.designsystem.PrimaryButton
+import app.reelify.core.designsystem.ProgressOverlay
+import app.reelify.core.designsystem.ReelTemplateCard
+import app.reelify.core.designsystem.ReelTextField
+import app.reelify.core.designsystem.Rf
+import app.reelify.core.designsystem.RfDims
+import app.reelify.core.designsystem.ScreenFrame
+import app.reelify.core.designsystem.SegmentedControl
+import app.reelify.core.designsystem.Shimmer
+import app.reelify.core.designsystem.Spinner
+import app.reelify.core.designsystem.StageHeading
+import app.reelify.core.designsystem.TopicSuggestionCard
+import app.reelify.core.designsystem.TreatmentSelectorCard
+import app.reelify.core.model.ReelDuration
+import app.reelify.core.model.ReelLanguage
+import app.reelify.core.model.Treatment
+import app.reelify.core.template.ReelTemplate
+import app.reelify.feature.common.LocalArabicUi
+import app.reelify.feature.common.appContainer
+import app.reelify.feature.common.rfViewModel
+import app.reelify.feature.common.text
+import app.reelify.feature.common.tr
+import kotlinx.coroutines.launch
+
+/** Lays out [items] in as many equal columns as fit [minCell] (no nested lazy lists). */
+@Composable
+fun <T> AdaptiveGrid(items: List<T>, minCell: Dp, modifier: Modifier = Modifier, spacing: Dp = RfDims.gap, cell: @Composable (T, Modifier) -> Unit) {
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val cols = ((maxWidth + spacing) / (minCell + spacing)).toInt().coerceIn(1, 4)
+        Column(verticalArrangement = Arrangement.spacedBy(spacing)) {
+            items.chunked(cols).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                    row.forEach { item -> cell(item, Modifier.weight(1f)) }
+                    repeat(cols - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun stepLabel(step: Int) = tr("STEP $step OF 4", "الخطوة $step من 4")
+
+// =========================================================================================== Stage 1
+
+@Composable
+fun ChooseReelScreen(presetTreatment: String?, presetTemplate: String?, onBack: () -> Unit, onCreated: (String) -> Unit) {
+    val vm = rfViewModel { ChooseReelViewModel(it) }
+    val c = appContainer()
+    val arabicUi = LocalArabicUi.current
+    val scope = rememberCoroutineScope()
+    val treatments by vm.treatments.collectAsStateWithLifecycle()
+    val templates by vm.templates.collectAsStateWithLifecycle()
+    val settings by c.settingsState.collectAsStateWithLifecycle()
+    var treatmentId by rememberSaveable { mutableStateOf(presetTreatment?.takeIf { it.isNotBlank() }) }
+    var language by rememberSaveable { mutableStateOf<ReelLanguage?>(null) }
+    var duration by rememberSaveable { mutableStateOf<ReelDuration?>(null) }
+    var templateId by rememberSaveable { mutableStateOf(presetTemplate?.takeIf { it.isNotBlank() }) }
+    var creating by remember { mutableStateOf(false) }
+    var restored by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (!restored) {
+            val last = vm.last()
+            if (treatmentId == null) treatmentId = last.treatmentId
+            language = language ?: last.language ?: settings.defaultReelLanguage
+            duration = duration ?: ReelDuration.fromMs(last.durationMs)
+            if (templateId == null) templateId = last.templateId
+            restored = true
+        }
+    }
+    val lang = language ?: settings.defaultReelLanguage
+    val dur = duration ?: ReelDuration.S30
+    val treatment = treatments.firstOrNull { it.id == treatmentId }
+    val template = templates.firstOrNull { it.id == templateId } ?: templates.firstOrNull().takeIf { templateId == null }
+
+    ScreenFrame("", onBack, bottomBar = {
+        BottomActionBar {
+            PrimaryButton(tr("Continue", "متابعة"), {
+                val t = treatment ?: return@PrimaryButton
+                val tp = template ?: return@PrimaryButton
+                creating = true
+                scope.launch { runCatching { vm.create(lang, t, dur, tp, arabicUi) }.onSuccess { onCreated(it.id) }; creating = false }
+            }, Modifier.weight(1f), icon = Icons.AutoMirrored.Rounded.ArrowForward, enabled = treatment != null && template != null, loading = creating)
+        }
+    }) {
+        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            StageHeading(1, tr("Choose your reel", "اختار الريل"), tr("Four quick choices. Filming and editing are already planned.", "أربع اختيارات سريعة. التصوير والمونتاج مخططين مسبقاً."), stepLabel = stepLabel(1))
+
+            Column(Modifier.padding(horizontal = RfDims.gutter)) {
+                Eyebrow(tr("Treatment", "العلاج"))
+                Spacer(Modifier.height(10.dp))
+                AdaptiveGrid(treatments, minCell = 150.dp) { t, m ->
+                    TreatmentSelectorCard(
+                        t, title = if (arabicUi) t.arabicName.ifBlank { t.name } else t.name, subtitle = if (arabicUi) t.name else t.arabicName,
+                        selected = t.id == treatmentId, needsSetupLabel = if (t.needsConfiguration) tr("Needs setup", "يحتاج إعداد") else null,
+                        onClick = { treatmentId = t.id }, modifier = m,
+                    )
+                }
+            }
+
+            Column(Modifier.padding(horizontal = RfDims.gutter)) {
+                Eyebrow(tr("Language", "اللغة"))
+                Spacer(Modifier.height(10.dp))
+                SegmentedControl(ReelLanguage.entries, lang, { if (it == ReelLanguage.ENGLISH) "English" else "عراقي" }, { language = it })
+            }
+
+            Column(Modifier.padding(horizontal = RfDims.gutter)) {
+                Eyebrow(tr("Length", "المدة"))
+                Spacer(Modifier.height(10.dp))
+                SegmentedControl(ReelDuration.entries, dur, { "${it.seconds}s" }, { duration = it }, sublabel = { tr("3 × ${it.sectionMs / 1000}s", "3 × ${it.sectionMs / 1000} ثا") })
+            }
+
+            Column(Modifier.padding(horizontal = RfDims.gutter)) {
+                Eyebrow(tr("Template", "القالب"))
+                Spacer(Modifier.height(4.dp))
+                Text(tr("Each template is a fixed, repeatable format with three planned shots.", "كل قالب شكل ثابت ومتكرر بثلاث لقطات مخططة."), style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(10.dp))
+                AdaptiveGrid(templates.filter { dur in it.supportedDurations }, minCell = 160.dp) { tp, m ->
+                    ReelTemplateCard(
+                        tp, tp.name.text(), tp.description.text(), tp.shots.sortedBy { it.index }.map { it.role.label.text() },
+                        selected = tp.id == template?.id, onClick = { templateId = tp.id }, modifier = m,
+                        badge = if (!tp.builtIn) tr("Custom", "مخصص") else null,
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+    }
+}
+
+// =========================================================================================== Stage 2
+
+@Composable
+fun MessageScreen(pid: String, onBack: () -> Unit, onScriptReady: () -> Unit, onEditTreatment: (String) -> Unit) {
+    val arabicUi = LocalArabicUi.current
+    val vm = rfViewModel(pid) { MessageViewModel(it, pid, arabicUi) }
+    val ui by vm.ui.collectAsStateWithLifecycle()
+    var own by rememberSaveable { mutableStateOf("") }
+    var advanced by rememberSaveable { mutableStateOf(false) }
+    val p = ui.project
+    val treatment = ui.treatment
+
+    Box(Modifier.fillMaxSize()) {
+        ScreenFrame("", onBack) {
+            Column(Modifier.verticalScroll(rememberScrollState()).imePadding(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                val sub = listOfNotNull(
+                    treatment?.let { if (arabicUi) it.arabicName.ifBlank { it.name } else it.name },
+                    p?.template?.name?.text(), p?.duration?.label,
+                ).joinToString(" · ")
+                StageHeading(2, tr("Choose your message", "اختار الفكرة"), sub, stepLabel = stepLabel(2))
+
+                Column(Modifier.padding(horizontal = RfDims.gutter), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SurpriseButton(ui.ideasLoading, enabled = ui.generating == null) { vm.surpriseMe() }
+                    if (ui.ideasLoading) repeat(3) { Shimmer(Modifier.fillMaxWidth().height(72.dp)) }
+                    ui.ideas.forEach { idea ->
+                        TopicSuggestionCard(idea.title, tr("Fresh idea", "فكرة جديدة"), onClick = { vm.useIdea(idea, onScriptReady) }, hook = idea.hook,
+                            loading = ui.generatingKey == "ai:" + idea.title.take(40), enabled = ui.generating == null)
+                    }
+                }
+
+                Column(Modifier.padding(horizontal = RfDims.gutter), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Eyebrow(tr("Suggested topics", "مواضيع مقترحة"))
+                    if (treatment != null && !treatment.isGeneral && !ui.profileReady) {
+                        InfoBanner(tr("${treatment.name} still needs its profile completed, so only safe general topics are shown.", "ملف ${treatment.arabicName.ifBlank { treatment.name }} يحتاج إكمال، فنعرض مواضيع عامة وآمنة فقط."), color = Rf.Warning)
+                        Text(tr("Complete profile", "أكمل الملف"), style = MaterialTheme.typography.labelLarge, color = Rf.RoseSoft, modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable { onEditTreatment(treatment.id) }.padding(8.dp))
+                    }
+                    ui.suggestions.forEach { s ->
+                        TopicSuggestionCard(s.title, s.idea.category.label.text(), onClick = { vm.useTopic(s, onScriptReady) },
+                            usedLabel = if (s.usedRecently) tr("used recently", "مستخدم مؤخراً") else null,
+                            loading = ui.generatingKey == s.idea.key, enabled = ui.generating == null)
+                    }
+                }
+
+                Column(Modifier.padding(horizontal = RfDims.gutter), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Eyebrow(tr("Your own idea", "فكرتك"))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ReelTextField(own, { own = it }, Modifier.weight(1f), placeholder = tr("Or describe your own idea…", "أو اكتب فكرتك…"), singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send))
+                        Spacer(Modifier.width(8.dp))
+                        Box(Modifier.size(52.dp).clip(CircleShape).background(if (own.isNotBlank()) Rf.PrimaryGradient else androidx.compose.ui.graphics.SolidColor(Rf.Surface3))
+                            .clickable(enabled = own.isNotBlank() && ui.generating == null) { vm.useOwnIdea(own, onScriptReady) }, contentAlignment = Alignment.Center) {
+                            Icon(Icons.AutoMirrored.Rounded.Send, tr("Write script", "اكتب السكربت"), tint = Color.White)
+                        }
+                    }
+                    Row(Modifier.clip(RoundedCornerShape(10.dp)).clickable { advanced = !advanced }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(tr("Advanced options", "خيارات متقدمة"), style = MaterialTheme.typography.labelLarge, color = Rf.TextSecondary)
+                        Icon(if (advanced) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null, tint = Rf.TextSecondary)
+                    }
+                    if (advanced) {
+                        val cpt = ui.concept
+                        ReelTextField(cpt.audience, { v -> vm.editConcept { it.copy(audience = v) } }, label = tr("Audience", "الجمهور"), singleLine = true)
+                        ReelTextField(cpt.tone, { v -> vm.editConcept { it.copy(tone = v) } }, label = tr("Tone", "النبرة"), singleLine = true)
+                        ReelTextField(cpt.cta, { v -> vm.editConcept { it.copy(cta = v) } }, label = tr("Call to action", "الدعوة"), singleLine = true)
+                        ReelTextField(cpt.mustInclude.joinToString("; "), { v -> vm.editConcept { it.copy(mustInclude = v.split(';').map(String::trim).filter(String::isNotEmpty)) } }, label = tr("Must include (separate with ;)", "لازم يتضمن (افصل بـ ;)"))
+                        ReelTextField(cpt.excludedClaims.joinToString("; "), { v -> vm.editConcept { it.copy(excludedClaims = v.split(';').map(String::trim).filter(String::isNotEmpty)) } }, label = tr("Never say (separate with ;)", "لا تقول (افصل بـ ;)"))
+                    }
+                }
+                ui.error?.let { ErrorBanner(it, Modifier.padding(horizontal = RfDims.gutter), onDismiss = vm::dismissError) }
+                Spacer(Modifier.height(24.dp))
+            }
+        }
+        ui.generating?.let { topic ->
+            ProgressOverlay(tr("Writing your script…", "جاري كتابة السكربت…"), detail = topic, cancelLabel = tr("Cancel", "إلغاء"), onCancel = vm::cancel)
+        }
+    }
+}
+
+@Composable
+private fun SurpriseButton(loading: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 76.dp).clip(RoundedCornerShape(22.dp)).background(Rf.PrimaryGradient)
+            .border(1.dp, Rf.BorderStrong, RoundedCornerShape(22.dp)).clickable(enabled = enabled && !loading, onClick = onClick).padding(18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(40.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+            if (loading) Spinner(22.dp, Color.White) else Icon(Icons.Rounded.AutoAwesome, null, tint = Color.White)
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(tr("Surprise me with a fresh idea", "فاجئني بفكرة جديدة"), style = MaterialTheme.typography.titleMedium, color = Color.White)
+            Text(tr("AI proposes four new angles from your approved facts", "الذكاء الاصطناعي يقترح أربع زوايا من معلوماتك المعتمدة"), style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.8f)))
+        }
+    }
+}

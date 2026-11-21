@@ -11,10 +11,13 @@ data class ShaderParams(
     val smooth: Float = 0f, val tone: Float = 0f, val underEye: Float = 0f, val refine: Float = 0f,
     val exposure: Float = 0f, val brightness: Float = 0f, val contrast: Float = 0f, val saturation: Float = 0f,
     val warmth: Float = 0f, val tint: Float = 0f, val highlights: Float = 0f, val shadows: Float = 0f,
-    val clarity: Float = 0f, val sharpen: Float = 0f, val split: Float = 0f,
+    val clarity: Float = 0f, val sharpen: Float = 0f, val split: Float = 0f, val glow: Float = 0f,
 ) {
     val isIdentity: Boolean get() = this == ShaderParams()
     val usesFace: Boolean get() = underEye > 0.001f || refine > 0.001f || smooth > 0.001f
+
+    /** Mean absolute difference across all controls — used to verify presets are perceptibly distinct. */
+    fun distanceTo(o: ShaderParams): Float = listOf(smooth - o.smooth, tone - o.tone, underEye - o.underEye, refine - o.refine, exposure - o.exposure, brightness - o.brightness, contrast - o.contrast, saturation - o.saturation, warmth - o.warmth, tint - o.tint, highlights - o.highlights, shadows - o.shadows, clarity - o.clarity, sharpen - o.sharpen, split - o.split, glow - o.glow).sumOf { kotlin.math.abs(it).toDouble() }.toFloat()
 }
 
 /** Face geometry in GL texture space (origin bottom-left, y up). */
@@ -24,6 +27,9 @@ data class FaceUniform(
 )
 
 object LookMath {
+    /** Perceptual gain so the default intensity (0.7) gives a clearly visible but natural result. */
+    const val SMOOTH_GAIN = 1.35f
+
     private fun look(l: ColorLook): ShaderParams = when (l) {
         ColorLook.NONE -> ShaderParams()
         ColorLook.NATURAL -> ShaderParams(contrast = 0.05f, saturation = 0.03f)
@@ -56,8 +62,10 @@ object LookMath {
         if (beauty.enabled && allowBeauty) {
             val i = beauty.intensity.coerceIn(0f, 1f)
             p = p.copy(
-                smooth = beauty.smoothing * i,
-                tone = beauty.toneEven * i,
+                smooth = (beauty.smoothing * i * SMOOTH_GAIN).coerceAtMost(1f),
+                tone = (beauty.toneEven * i * SMOOTH_GAIN).coerceAtMost(1f),
+                glow = beauty.glow * i,
+                split = p.split + beauty.split * i,
                 underEye = beauty.underEye * i,
                 refine = beauty.faceRefine * i,
                 exposure = p.exposure + beauty.exposure * 0.6f * i,

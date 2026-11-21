@@ -118,28 +118,39 @@ enum class BeautyPreset(val label: String) { NATURAL("Natural"), CLEAN_STUDIO("C
 data class BeautySettings(
     val enabled: Boolean = false,
     val preset: BeautyPreset = BeautyPreset.NATURAL,
-    val intensity: Float = 0.6f,
-    val smoothing: Float = 0.35f,
-    val toneEven: Float = 0.25f,
-    val brightness: Float = 0.05f,
+    val intensity: Float = 0.7f,
+    val smoothing: Float = 0.45f,
+    val toneEven: Float = 0.35f,
+    val brightness: Float = 0.1f,
     val exposure: Float = 0f,
-    val contrast: Float = 0f,
-    val saturation: Float = 0f,
-    val warmth: Float = 0.05f,
-    val highlightReduction: Float = 0.15f,
-    val shadowLift: Float = 0.05f,
-    val clarity: Float = 0.1f,
-    val sharpen: Float = 0.15f,
-    val underEye: Float = 0.2f,
+    val contrast: Float = 0.04f,
+    val saturation: Float = 0.02f,
+    val warmth: Float = 0.08f,
+    val highlightReduction: Float = 0.25f,
+    val shadowLift: Float = 0.15f,
+    val clarity: Float = 0.08f,
+    val sharpen: Float = 0.2f,
+    val underEye: Float = 0.4f,
     val faceRefine: Float = 0f,
+    val glow: Float = 0f,
+    val split: Float = 0f,
 ) {
     companion object {
-        fun forPreset(p: BeautyPreset, intensity: Float = 0.6f): BeautySettings = when (p) {
-            BeautyPreset.NATURAL -> BeautySettings(true, p, intensity, 0.3f, 0.2f, 0.03f, 0f, 0f, 0f, 0.03f, 0.1f, 0.05f, 0.08f, 0.12f, 0.15f, 0f)
-            BeautyPreset.CLEAN_STUDIO -> BeautySettings(true, p, intensity, 0.4f, 0.3f, 0.08f, 0.05f, 0.08f, 0.02f, 0f, 0.2f, 0.08f, 0.15f, 0.2f, 0.25f, 0f)
-            BeautyPreset.SOFT_GLOW -> BeautySettings(true, p, intensity, 0.55f, 0.35f, 0.1f, 0.05f, -0.05f, 0.05f, 0.1f, 0.25f, 0.1f, 0f, 0.05f, 0.3f, 0.1f)
-            BeautyPreset.CLINICAL_PREMIUM -> BeautySettings(true, p, intensity, 0.25f, 0.25f, 0.05f, 0.03f, 0.05f, -0.05f, -0.03f, 0.2f, 0.05f, 0.18f, 0.2f, 0.2f, 0f)
-            BeautyPreset.CINEMATIC -> BeautySettings(true, p, intensity, 0.35f, 0.25f, 0f, -0.03f, 0.15f, -0.08f, 0.08f, 0.3f, -0.05f, 0.2f, 0.15f, 0.2f, 0f)
+        /**
+         * Calibrated presets (v2). Each preset has a distinct character so switching is visible at
+         * medium intensity, while smoothing keeps pore detail (see shader) to avoid a plastic look.
+         *  Natural         – light smoothing, gentle lift, true-to-life colour.
+         *  Clean Studio    – brighter, crisper, neutral-cool; like a softbox in front of you.
+         *  Soft Glow       – strongest smoothing, warm, lower contrast, soft bloom.
+         *  Clinical Premium– restrained skin, cool, high clarity: credible and sharp.
+         *  Cinematic       – contrast, warm highlights / cool shadows split-tone, deeper look.
+         */
+        fun forPreset(p: BeautyPreset, intensity: Float = 0.7f): BeautySettings = when (p) {
+            BeautyPreset.NATURAL -> BeautySettings(true, p, intensity, smoothing = 0.45f, toneEven = 0.35f, brightness = 0.10f, contrast = 0.04f, saturation = 0.02f, warmth = 0.08f, highlightReduction = 0.25f, shadowLift = 0.15f, clarity = 0.08f, sharpen = 0.20f, underEye = 0.40f)
+            BeautyPreset.CLEAN_STUDIO -> BeautySettings(true, p, intensity, smoothing = 0.55f, toneEven = 0.45f, brightness = 0.28f, exposure = 0.12f, contrast = 0.16f, saturation = -0.06f, warmth = -0.10f, highlightReduction = 0.35f, shadowLift = 0.30f, clarity = 0.20f, sharpen = 0.35f, underEye = 0.55f)
+            BeautyPreset.SOFT_GLOW -> BeautySettings(true, p, intensity, smoothing = 0.80f, toneEven = 0.55f, brightness = 0.22f, exposure = 0.06f, contrast = -0.18f, saturation = 0.08f, warmth = 0.30f, highlightReduction = 0.10f, shadowLift = 0.35f, clarity = 0f, sharpen = 0.05f, underEye = 0.60f, faceRefine = 0.15f, glow = 0.55f)
+            BeautyPreset.CLINICAL_PREMIUM -> BeautySettings(true, p, intensity, smoothing = 0.32f, toneEven = 0.30f, brightness = 0.14f, contrast = 0.20f, saturation = -0.14f, warmth = -0.25f, highlightReduction = 0.30f, shadowLift = 0.12f, clarity = 0.35f, sharpen = 0.40f, underEye = 0.35f)
+            BeautyPreset.CINEMATIC -> BeautySettings(true, p, intensity, smoothing = 0.45f, toneEven = 0.35f, brightness = -0.06f, contrast = 0.38f, saturation = -0.16f, warmth = 0.22f, highlightReduction = 0.45f, shadowLift = -0.10f, clarity = 0.25f, sharpen = 0.20f, underEye = 0.30f, glow = 0.15f, split = 0.8f)
             BeautyPreset.CUSTOM -> BeautySettings(enabled = true, preset = p, intensity = intensity)
         }
     }
@@ -328,6 +339,8 @@ data class ScriptMeta(
     val creativeAngle: String = "",
     val hookOptions: List<HookOption> = emptyList(),
     val selectedHook: Int = 0,
+    /** The hook text currently placed at the start of shot 1 (may come from an earlier hook set). */
+    val activeHook: String = "",
     val ctaStyle: String = "",
     val medicalReview: List<ClaimFlag> = emptyList(),
     val qualityNotes: List<String> = emptyList(),

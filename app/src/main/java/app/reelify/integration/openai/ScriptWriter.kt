@@ -188,7 +188,7 @@ class ScriptWriter(
         }
         val meta = ScriptMeta(
             topicTitle = ctx.topicTitle, topicKey = topicKey, creativeAngle = dto.creativeAngle,
-            hookOptions = dto.hookOptions.map { HookOption(it.style, it.text) }, selectedHook = 0, ctaStyle = dto.ctaStyle,
+            hookOptions = dto.hookOptions.map { HookOption(it.style, it.text) }, selectedHook = 0, activeHook = hook, ctaStyle = dto.ctaStyle,
             medicalReview = dto.medicalReview.map { AiMappers.flag(it) }, qualityNotes = check.notes,
             model = "", promptVersion = ScriptPrompts.VERSION, generatedAt = clock.now(),
         )

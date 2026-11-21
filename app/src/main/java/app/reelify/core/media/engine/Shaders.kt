@@ -46,93 +46,117 @@ uniform float uSplit;
 uniform vec4 uFace;
 uniform vec4 uEyes;
 uniform float uFaceOn;
+uniform vec2 uUp;      // "face up" direction in aspect-corrected texture space (camera textures are rotated)
+uniform float uGlow;
+uniform float uBypass; // 1 = render the untouched frame (hold-to-compare uses the real pipeline)
 
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 vec3 tex(vec2 p) { return texture2D(uTexSampler, clamp(p, uUvMin, uUvMax)).rgb; }
 // Aspect-corrected space so ellipses are round in pixels.
 vec2 A(vec2 p) { return vec2(p.x * uAspect, p.y); }
+vec2 fromA(vec2 v) { return vec2(v.x / uAspect, v.y); }
 float ellipse(vec2 p, vec2 c, vec2 r) {
   vec2 d = (A(p) - A(c)) / max(r, vec2(0.0001));
   return 1.0 - smoothstep(0.75, 1.15, length(d));
+}
+// Ellipse aligned to the face axes (r.x across the face, r.y along it).
+float faceEllipse(vec2 p, vec2 c, vec2 r) {
+  vec2 d = A(p) - A(c);
+  vec2 rightAx = vec2(uUp.y, -uUp.x);
+  vec2 q = vec2(dot(d, rightAx), dot(d, uUp)) / max(r, vec2(0.0001));
+  return 1.0 - smoothstep(0.75, 1.15, length(q));
 }
 float skinMask(vec3 c) {
   float y = luma(c);
   float cb = 0.5 - 0.168736 * c.r - 0.331264 * c.g + 0.5 * c.b;
   float cr = 0.5 + 0.5 * c.r - 0.418688 * c.g - 0.081312 * c.b;
-  float m = smoothstep(0.29, 0.34, cb) * (1.0 - smoothstep(0.50, 0.55, cb));
-  m *= smoothstep(0.505, 0.54, cr) * (1.0 - smoothstep(0.67, 0.72, cr));
-  return m * smoothstep(0.06, 0.18, y) * (1.0 - smoothstep(0.96, 1.0, y));
+  float m = smoothstep(0.28, 0.33, cb) * (1.0 - smoothstep(0.51, 0.56, cb));
+  m *= smoothstep(0.50, 0.535, cr) * (1.0 - smoothstep(0.68, 0.73, cr));
+  return m * smoothstep(0.05, 0.16, y) * (1.0 - smoothstep(0.96, 1.0, y));
 }
 
 void main() {
   vec2 uv = vTex;
+  if (uBypass > 0.5) { gl_FragColor = vec4(tex(uv), 1.0); return; }
+  vec2 rightAx = vec2(uUp.y, -uUp.x);
   if (uFaceOn > 0.5 && uRefine > 0.001) {
-    vec2 d = (A(uv) - A(uFace.xy)) / max(uFace.zw, vec2(0.0001));
-    float lower = smoothstep(-0.05, 0.55, -d.y);
-    float fall = 1.0 - smoothstep(0.55, 1.1, length(d));
-    uv.x += (uv.x - uFace.x) * uRefine * 0.05 * lower * fall;
+    vec2 d = A(uv) - A(uFace.xy);
+    float rad = max(max(uFace.z, uFace.w), 0.0001);
+    vec2 n = d / rad;
+    float lower = smoothstep(-0.05, 0.55, -dot(n, uUp));
+    float fall = 1.0 - smoothstep(0.55, 1.1, length(n));
+    uv += fromA(rightAx * dot(d, rightAx) * uRefine * 0.06 * lower * fall);
   }
   vec3 c0 = tex(uv);
   vec3 col = c0;
   float faceM = 1.0;
-  if (uFaceOn > 0.5) faceM = mix(0.35, 1.0, ellipse(uv, uFace.xy, uFace.zw * 1.3));
+  if (uFaceOn > 0.5) faceM = mix(0.5, 1.0, ellipse(uv, uFace.xy, uFace.zw * 1.3));
   float sk = skinMask(c0) * faceM;
   vec3 blurL = c0;
-  if (uSmooth > 0.001 || uTone > 0.001 || uClarity > 0.001) {
-    vec2 rad = uTexel * (2.0 + 4.5 * uSmooth) * uScale;
+  if (uSmooth > 0.001 || uTone > 0.001 || uClarity > 0.001 || uGlow > 0.001) {
+    // Edge-preserving (bilateral) blur: 2 rings x 8 taps, radius grows with smoothing.
+    vec2 rad = uTexel * (2.0 + 9.0 * uSmooth) * uScale;
     vec3 sum = c0; float wsum = 1.0; vec3 acc = vec3(0.0);
     float l0 = luma(c0);
+    float rangeK = mix(260.0, 110.0, clamp(uSmooth, 0.0, 1.0));
     for (int ring = 1; ring <= 2; ring++) {
       for (int k = 0; k < 8; k++) {
         float a = float(k) * 0.785398 + float(ring) * 0.392699;
-        vec2 o = vec2(cos(a), sin(a)) * rad * float(ring);
+        vec2 o = vec2(cos(a), sin(a)) * rad * float(ring) * 0.5;
         vec3 s = tex(uv + o);
         float dl = luma(s) - l0;
-        float w = exp(-dl * dl * 220.0);
+        float w = exp(-dl * dl * rangeK);
         sum += s * w; wsum += w; acc += s;
       }
     }
     vec3 bil = sum / wsum;
     blurL = acc / 16.0;
     vec3 detail = c0 - blurL;
-    vec3 smoothed = bil + detail * 0.3;
-    col = mix(c0, smoothed, clamp(uSmooth * sk * 1.15, 0.0, 0.9));
+    // Keep some fine texture (pores) so skin never looks plastic.
+    vec3 smoothed = bil + detail * mix(0.45, 0.22, clamp(uSmooth, 0.0, 1.0));
+    col = mix(c0, smoothed, clamp(uSmooth * sk * 1.25, 0.0, 0.88));
     float y = luma(col);
     vec3 chroma = col - vec3(y);
     vec3 bchroma = bil - vec3(luma(bil));
-    col = vec3(y) + mix(chroma, bchroma * 0.94, clamp(uTone * sk, 0.0, 1.0));
+    col = vec3(y) + mix(chroma, bchroma * 0.94, clamp(uTone * sk * 1.2, 0.0, 1.0));
   }
   if (uFaceOn > 0.5 && uUnderEye > 0.001 && uEyes.x >= 0.0) {
     float eyeDist = distance(A(uEyes.xy), A(uEyes.zw));
     vec2 r = vec2(eyeDist * 0.34, eyeDist * 0.16);
-    vec2 off = vec2(0.0, -eyeDist * 0.24);
-    float m = max(ellipse(uv, uEyes.xy + vec2(off.x / uAspect, off.y), r), ellipse(uv, uEyes.zw + vec2(off.x / uAspect, off.y), r));
+    vec2 off = fromA(-uUp * eyeDist * 0.24);
+    float m = max(faceEllipse(uv, uEyes.xy + off, r), faceEllipse(uv, uEyes.zw + off, r));
     float y = luma(col);
-    col += vec3(0.07) * (1.0 - y) * uUnderEye * m;
+    col += vec3(0.10) * (1.0 - y) * uUnderEye * m;
   }
   if (uSharpen > 0.001) {
     vec2 t = uTexel * uScale;
     vec3 n = tex(uv + vec2(0.0, t.y)) + tex(uv - vec2(0.0, t.y)) + tex(uv + vec2(t.x, 0.0)) + tex(uv - vec2(t.x, 0.0));
     float lap = luma(c0) * 4.0 - luma(n);
-    col += vec3(lap) * uSharpen * 0.5 * (1.0 - sk * 0.6);
+    col += vec3(lap) * uSharpen * 0.6 * (1.0 - sk * 0.7);
   }
   if (uClarity > 0.001) {
     float y = luma(col);
     float mid = 1.0 - abs(y - 0.5) * 2.0;
-    col += vec3(y - luma(blurL)) * uClarity * 0.9 * mid * (1.0 - sk * 0.5);
+    col += vec3(y - luma(blurL)) * uClarity * 1.1 * mid * (1.0 - sk * 0.6);
+  }
+  if (uGlow > 0.001) {
+    // Soft bloom from the blurred luminance (screen blend), strongest on highlights.
+    float bl = luma(blurL);
+    vec3 g = vec3(smoothstep(0.45, 1.0, bl)) * uGlow * 0.45;
+    col = 1.0 - (1.0 - col) * (1.0 - g);
   }
   // ----- grade -----
   col *= exp2(uExposure);
-  col += vec3(uBrightness * 0.22);
-  col = (col - 0.5) * (1.0 + uContrast * 0.55) + 0.5;
+  col += vec3(uBrightness * 0.25);
+  col = (col - 0.5) * (1.0 + uContrast * 0.6) + 0.5;
   float y = luma(col);
-  col -= col * smoothstep(0.55, 1.0, y) * uHighlights * 0.22;
-  col += vec3(1.0 - smoothstep(0.0, 0.45, y)) * uShadows * 0.16;
+  col -= col * smoothstep(0.55, 1.0, y) * uHighlights * 0.25;
+  col += vec3(1.0 - smoothstep(0.0, 0.45, y)) * uShadows * 0.18;
   y = luma(col);
   col += uSplit * mix(vec3(-0.02, 0.008, 0.03), vec3(0.03, 0.01, -0.022), smoothstep(0.2, 0.8, y));
   y = luma(col);
   col = mix(vec3(y), col, 1.0 + uSaturation);
-  col.r += uWarmth * 0.055; col.b -= uWarmth * 0.055; col.g += uTint * 0.035;
+  col.r += uWarmth * 0.09; col.b -= uWarmth * 0.09; col.g += uTint * 0.05;
   gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }
 """

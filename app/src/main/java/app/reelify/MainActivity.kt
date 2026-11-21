@@ -36,6 +36,7 @@ class MainActivity : ComponentActivity() {
             }
             CompositionLocalProvider(
                 LocalStrings provides if (arabicUi) UiStrings.Arabic else UiStrings.English,
+                app.reelify.feature.common.LocalArabicUi provides arabicUi,
                 LocalLayoutDirection provides if (arabicUi) LayoutDirection.Rtl else LayoutDirection.Ltr,
             ) {
                 ReelifyTheme { ReelifyNavHost() }

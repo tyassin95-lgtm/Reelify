@@ -81,7 +81,7 @@ fun ProjectsTab(nav: NavHostController) {
             }
         }
         if (shown.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-            EmptyState(Icons.Rounded.MovieCreation, "No reels here yet", "Create a reel and it will be saved automatically as you work.", action = s.createReel, onAction = { nav.navigate(Routes.setup()) })
+            EmptyState(Icons.Rounded.MovieCreation, "No reels here yet", "Create a reel and it will be saved automatically as you work.", action = s.createReel, onAction = { nav.navigate(Routes.choose()) })
         }
         items(shown, key = { it.id }) { p -> ProjectCell(p, onOpen = { nav.openProject(p) }, onDuplicate = { scope.launch { c.projects.duplicateAsTemplate(p.id) } }, onDelete = { confirmDelete = p }) }
     }

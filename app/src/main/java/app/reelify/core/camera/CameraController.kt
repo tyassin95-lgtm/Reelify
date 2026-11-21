@@ -32,7 +32,6 @@ import androidx.camera.video.VideoCapture
 import androidx.camera.video.VideoRecordEvent
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
-import app.reelify.core.media.engine.FaceUniform
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.face.FaceDetection
 import com.google.mlkit.vision.face.FaceDetectorOptions
@@ -41,6 +40,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.guava.await
+import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -61,6 +61,20 @@ data class CameraCaps(
 /** Face framing feedback in normalized preview coordinates (top-left origin). */
 data class FaceInfo(val cx: Float, val cy: Float, val w: Float, val h: Float)
 
+/** Honest state of the live beauty effect. Controls must never look active while the effect is bypassed. */
+enum class BeautyEffectState {
+    /** Binding the camera / waiting for the first frame. */
+    STARTING,
+    /** Effect is running but beauty is switched off for this shot. */
+    DISABLED,
+    /** Effect is bound and beauty is on; frames are flowing through the shader. */
+    ACTIVE,
+    /** This device couldn't bind the camera with a GPU effect; preview is unfiltered (render still applies beauty). */
+    UNSUPPORTED,
+    /** The GPU effect started but failed at runtime; preview is unfiltered (render still applies beauty). */
+    FAILED,
+}
+
 sealed interface RecState {
     data object Idle : RecState
     data class Recording(val elapsedMs: Long, val amplitude: Double) : RecState
@@ -74,8 +88,16 @@ sealed interface RecState {
  * when a device can't bind every use case.
  */
 class CameraController(private val context: Context) {
-    val beautyProcessor = BeautySurfaceProcessor()
-    private val effect = BeautyCameraEffect(beautyProcessor) { _errors.value = "Camera effect error: ${it.message}" }
+    val beautyProcessor = BeautySurfaceProcessor { msg -> onEffectFailure(msg) }
+    private val effect = BeautyCameraEffect(beautyProcessor) { onEffectFailure("Camera effect error: ${it.message}") }
+    private val _effectState = MutableStateFlow(BeautyEffectState.STARTING)
+    val effectState: StateFlow<BeautyEffectState> = _effectState.asStateFlow()
+    private val _effectMessage = MutableStateFlow<String?>(null)
+    val effectMessage: StateFlow<String?> = _effectMessage.asStateFlow()
+    private var effectBound = false
+    private var effectFailed = false
+    private var lastBind: (suspend () -> Unit)? = null
+    private var lastFrames = 0L
     private var provider: ProcessCameraProvider? = null
     private var camera: Camera? = null
     private var videoCapture: VideoCapture<Recorder>? = null
@@ -98,8 +120,35 @@ class CameraController(private val context: Context) {
     var usingFront = true; private set
     var faceGuideEnabled = true
 
+    private fun onEffectFailure(msg: String) {
+        if (effectFailed) return
+        effectFailed = true
+        _effectMessage.value = msg
+        _effectState.value = BeautyEffectState.FAILED
+        // Rebind WITHOUT the effect so the camera keeps working — and say so in the UI.
+        lastBind?.let { rebind -> kotlinx.coroutines.MainScope().launchSafely { rebind() } }
+    }
+
+    /**
+     * Called periodically by the UI. ACTIVE is reported only when frames are really being rendered
+     * through the shader; otherwise the state stays STARTING/UNSUPPORTED/FAILED.
+     */
+    fun refreshEffectState(beautyOn: Boolean) {
+        if (effectFailed) { _effectState.value = BeautyEffectState.FAILED; return }
+        if (!effectBound) { if (_effectState.value != BeautyEffectState.STARTING) _effectState.value = BeautyEffectState.UNSUPPORTED; return }
+        val frames = beautyProcessor.framesRendered
+        val flowing = frames > lastFrames
+        lastFrames = frames
+        _effectState.value = when {
+            !flowing && frames == 0L -> BeautyEffectState.STARTING
+            !beautyOn -> BeautyEffectState.DISABLED
+            else -> BeautyEffectState.ACTIVE
+        }
+    }
+
     @OptIn(ExperimentalCamera2Interop::class)
     suspend fun bind(owner: LifecycleOwner, surfaceProvider: Preview.SurfaceProvider, front: Boolean, want4k: Boolean, want60: Boolean) {
+        lastBind = { bind(owner, surfaceProvider, front, want4k, want60) }
         val p = provider ?: ProcessCameraProvider.getInstance(context).await().also { provider = it }
         val hasFront = runCatching { p.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA) }.getOrDefault(false)
         val hasBack = runCatching { p.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) }.getOrDefault(false)
@@ -129,16 +178,27 @@ class CameraController(private val context: Context) {
         analysis.setAnalyzer(analysisExecutor) { proxy -> analyze(proxy) }
 
         p.unbindAll()
+        var withEffect = !effectFailed
         val cam = runCatching {
+            if (!withEffect) error("effect disabled after failure")
             p.bindToLifecycle(owner, selector, UseCaseGroup.Builder().addUseCase(preview).addUseCase(vc).addUseCase(analysis).addEffect(effect).build())
         }.recoverCatching {
             // Some hardware can't run 3 streams: drop face analysis (recording still works).
+            if (!withEffect) error("effect disabled after failure")
             p.unbindAll()
             p.bindToLifecycle(owner, selector, UseCaseGroup.Builder().addUseCase(preview).addUseCase(vc).addEffect(effect).build())
         }.recoverCatching {
+            // Last resort: no GPU effect. This is reported as UNSUPPORTED — never silently.
+            withEffect = false
             p.unbindAll()
             p.bindToLifecycle(owner, selector, UseCaseGroup.Builder().addUseCase(preview).addUseCase(vc).build())
         }.getOrElse { _errors.value = "Couldn't start the camera: ${it.message}"; return }
+        effectBound = withEffect
+        lastFrames = 0
+        if (!withEffect && !effectFailed) {
+            _effectState.value = BeautyEffectState.UNSUPPORTED
+            _effectMessage.value = "Live beauty preview isn't supported with this camera configuration. Your take is recorded normally and beauty is still applied when the reel is rendered."
+        }
         camera = cam
         videoCapture = vc
         val exp = cam.cameraInfo.exposureState
@@ -167,12 +227,14 @@ class CameraController(private val context: Context) {
                 var cx = b.exactCenterX() / w; val cy = b.exactCenterY() / h
                 if (usingFront) cx = 1f - cx
                 _face.value = FaceInfo(cx, cy, b.width().toFloat() / w, b.height().toFloat() / h)
-                fun eye(type: Int): Pair<Float, Float> = f.getLandmark(type)?.position?.let { pt ->
-                    val x = pt.x / w; (if (usingFront) 1f - x else x) to (1f - pt.y / h)
-                } ?: (-1f to -1f)
-                val (lx, ly) = eye(FaceLandmark.LEFT_EYE); val (rx, ry) = eye(FaceLandmark.RIGHT_EYE)
-                val aspect = w.toFloat() / h
-                beautyProcessor.face = FaceUniform(cx, 1f - cy, (b.width().toFloat() / w / 2f) * aspect, b.height().toFloat() / h / 2f, lx, ly, rx, ry)
+                // Live shader samples the camera texture in sensor orientation → map into texture space.
+                fun up(type: Int): Pair<Float, Float>? = f.getLandmark(type)?.position?.let { pt -> pt.x / w to pt.y / h }
+                val texAspect = proxy.width.toFloat() / proxy.height // buffer (sensor-orientation) aspect
+                beautyProcessor.face = CameraFaceMapping.faceUniform(
+                    UprightBox(b.left.toFloat() / w, b.top.toFloat() / h, b.right.toFloat() / w, b.bottom.toFloat() / h),
+                    up(FaceLandmark.LEFT_EYE), up(FaceLandmark.RIGHT_EYE), rot, texAspect,
+                )
+                beautyProcessor.up = CameraFaceMapping.upVector(rot)
             }
             .addOnCompleteListener { proxy.close() }
     }
@@ -245,4 +307,8 @@ class CameraController(private val context: Context) {
         analysisExecutor.shutdown()
         detector.close()
     }
+}
+
+private fun kotlinx.coroutines.CoroutineScope.launchSafely(block: suspend () -> Unit) {
+    launch(kotlinx.coroutines.Dispatchers.Main) { runCatching { block() } }
 }
