@@ -118,7 +118,8 @@ object GeneratedContentNormalizer {
 
         // 10. Protected spellings (Latin device/brand names only; whole-word, case-insensitive).
         for (term in protectedTerms.filter { it.isNotBlank() && it.any { c -> c in 'A'..'Z' || c in 'a'..'z' } }.sortedByDescending { it.length }) {
-            val re = Regex("(?<![\\p{L}\\p{N}])" + Regex.escape(term) + "(?![\\p{L}\\p{N}])", RegexOption.IGNORE_CASE)
+            // Latin boundaries only, so Arabic prefixes attached to the name ("وlasemd") still match.
+            val re = Regex("(?<![A-Za-z0-9])" + Regex.escape(term) + "(?![A-Za-z0-9])", RegexOption.IGNORE_CASE)
             s = re.replace(s) { term }
         }
         return NormalizedText(s, issues.distinct())
@@ -208,8 +209,8 @@ object GeneratedContentNormalizer {
                 .replace(Regex("^\\s{0,3}>\\s?"), "")
                 .replace(Regex("^\\s{0,3}[-*•]\\s+"), "")
         }
-        // Stray leftover emphasis markers.
-        t = t.replace("**", "").replace(Regex("(?<=\\s|^)\\*(?=\\s|$)"), "")
+        // Stray leftover bold markers (lone "*" is left alone: it can be meaningful, e.g. "2 * 3").
+        t = t.replace("**", "")
         if (field != TextField.SPOKEN && field != TextField.NOTE) t = t.replace(Regex("^\\s*\\d+[.)]\\s+(?=\\S)"), { m -> if (field == TextField.HEADLINE) m.value else "" })
         return t
     }
