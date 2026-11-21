@@ -59,6 +59,8 @@ object CreativeEvalSet {
         EvalScenario("E28", "picostar", "expert_explains", AR, S30, "التصبغات ترجع؟"),
         EvalScenario("E29", "dermablate", "myth_buster", EN, S60, "A common misconception about resurfacing"),
         EvalScenario("E30", "lasemd", "patient_question", AR, S30, "متى أشوف النتيجة؟"),
+        EvalScenario("E31", "diamond_glow", "expert_explains", EN, S45, "Inside DiamondGlow 3-in-1 skincare mechanics"),
+        EvalScenario("E32", "diamond_glow", "patient_question", AR, S30, "شنو الفرق بين دايموند جلو والتقشير الماسي العادي؟"),
     )
 }
 
@@ -71,8 +73,8 @@ object CreativeEvalSet {
 class CreativeEvalHarness {
     @Test fun evalSetIsBalanced() {
         val s = CreativeEvalSet.scenarios
-        assertThat(s).hasSize(30)
-        assertThat(s.map { it.id }.toSet()).hasSize(30)
+        assertThat(s).hasSize(32)
+        assertThat(s.map { it.id }.toSet()).hasSize(32)
         assertThat(s.map { it.template }.toSet()).containsExactlyElementsIn(BuiltInTemplates.all.map { it.id })
         assertThat(s.map { it.treatment }.toSet()).containsExactlyElementsIn(TreatmentSeed.treatments.map { it.id })
         assertThat(s.count { it.language == ReelLanguage.IRAQI_ARABIC }).isAtLeast(14)

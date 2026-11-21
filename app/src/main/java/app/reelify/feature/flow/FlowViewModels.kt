@@ -4,8 +4,11 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.reelify.AppContainer
+import app.reelify.core.content.FactualBriefBuilder
 import app.reelify.core.content.TopicLibrary
 import app.reelify.core.content.TopicSuggestion
+import app.reelify.core.content.TopicUiCategory
+import app.reelify.core.content.TreatmentKnowledgeCatalog
 import app.reelify.core.data.LastReelChoice
 import app.reelify.core.media.ImportOptions
 import app.reelify.core.model.CaptionSettings
@@ -21,6 +24,7 @@ import app.reelify.core.model.ReelConcept
 import app.reelify.core.model.ReelDuration
 import app.reelify.core.model.ReelLanguage
 import app.reelify.core.model.ReelSection
+import app.reelify.core.model.SocialPlatform
 import app.reelify.core.model.Treatment
 import app.reelify.core.policy.ClaimChecker
 import app.reelify.core.template.MediaRequirement
@@ -46,12 +50,31 @@ import kotlinx.coroutines.launch
 /** Builds the scriptwriter context for a template project. */
 suspend fun AppContainer.scriptContext(p: Project, topicTitle: String, brief: String = "", idea: String = ""): ScriptContext {
     val template = p.template ?: error("Not a template project")
+    val treatment = library.getTreatment(p.treatmentId)
+    val pack = TreatmentKnowledgeCatalog.packFor(
+        treatmentId = treatment?.id ?: p.treatmentId,
+        linkedReferenceId = treatment?.linkedReferenceProfileId,
+        needsConfiguration = treatment?.needsConfiguration == true,
+    )
+    val arabic = p.language == ReelLanguage.IRAQI_ARABIC
+    val matchedTopic = TopicLibrary.topicsFor(treatment, template.id)
+        .firstOrNull { it.title.en == topicTitle || it.title.ar == topicTitle }
+    val factualBrief = FactualBriefBuilder.build(
+        treatment = treatment,
+        pack = pack,
+        topic = matchedTopic,
+        topicTitle = topicTitle,
+        topicBrief = brief,
+        userIdea = idea,
+        arabic = arabic,
+    )
     return ScriptContext(
         language = p.language, duration = p.duration, template = template,
-        treatment = library.getTreatment(p.treatmentId), terminology = library.terminology(), brand = settings.currentBrand(),
+        treatment = treatment, terminology = library.terminology(), brand = settings.currentBrand(),
         topicTitle = topicTitle, topicBrief = brief, userIdea = idea, concept = p.concept,
         recentHooks = content.recentHooks(), recentTopics = content.recentTopicKeys(p.treatmentId),
-        examples = if (p.language == ReelLanguage.IRAQI_ARABIC) content.iraqiExamplesForPrompt() else emptyList(),
+        examples = if (arabic) content.iraqiExamplesForPrompt() else emptyList(),
+        factualBrief = factualBrief,
     )
 }
 
@@ -78,6 +101,8 @@ data class MessageUi(
     val project: Project? = null,
     val treatment: Treatment? = null,
     val suggestions: List<TopicSuggestion> = emptyList(),
+    val selectedCategory: TopicUiCategory = TopicUiCategory.ALL,
+    val visibleCount: Int = 8,
     val ideas: List<FreshIdea> = emptyList(),
     val ideasLoading: Boolean = false,
     val generating: String? = null,
@@ -92,16 +117,61 @@ class MessageViewModel(private val c: AppContainer, private val pid: String, pri
     val ui = _ui.asStateFlow()
     private var job: Job? = null
     private var saveJob: Job? = null
+    private var recentKeys: List<String> = emptyList()
 
     init {
         viewModelScope.launch {
             val p = c.projects.getProject(pid) ?: return@launch
             val t = c.library.getTreatment(p.treatmentId)
-            val recent = c.content.recentTopicKeys(p.treatmentId)
+            recentKeys = c.content.recentTopicKeys(p.treatmentId)
             val arabicTitles = p.language == ReelLanguage.IRAQI_ARABIC
             _ui.update {
                 it.copy(project = p, treatment = t, concept = p.concept, profileReady = TopicLibrary.profileReady(t),
-                    suggestions = TopicLibrary.suggestions(t, p.template?.id, recent, arabicTitles))
+                    suggestions = TopicLibrary.suggestions(t, p.template?.id, recentKeys, arabicTitles, uiCategory = it.selectedCategory))
+            }
+        }
+    }
+
+    fun selectCategory(category: TopicUiCategory) {
+        val state = _ui.value
+        val arabicTitles = state.project?.language == ReelLanguage.IRAQI_ARABIC
+        val filtered = TopicLibrary.suggestions(
+            treatment = state.treatment,
+            templateId = state.project?.template?.id,
+            recentKeys = recentKeys,
+            arabic = arabicTitles,
+            uiCategory = category,
+        )
+        _ui.update { it.copy(selectedCategory = category, visibleCount = 8, suggestions = filtered) }
+    }
+
+    fun showMoreTopics() {
+        _ui.update { it.copy(visibleCount = it.visibleCount + 12) }
+    }
+
+    fun setPlatform(platform: SocialPlatform) {
+        editConcept { it.copy(platform = platform) }
+    }
+
+    fun confirmCleopatraIdentity() {
+        viewModelScope.launch {
+            val updated = c.library.confirmCleopatraAsDiamondGlow() ?: return@launch
+            val state = _ui.value
+            val arabicTitles = state.project?.language == ReelLanguage.IRAQI_ARABIC
+            val refreshed = TopicLibrary.suggestions(
+                treatment = updated,
+                templateId = state.project?.template?.id,
+                recentKeys = recentKeys,
+                arabic = arabicTitles,
+                uiCategory = state.selectedCategory,
+            )
+            _ui.update {
+                it.copy(
+                    treatment = updated,
+                    profileReady = TopicLibrary.profileReady(updated),
+                    visibleCount = 8,
+                    suggestions = refreshed,
+                )
             }
         }
     }
@@ -224,6 +294,13 @@ class ScriptReviewViewModel(private val c: AppContainer, private val pid: String
         val b = c.projects.getBundle(pid) ?: return@launch
         val clean = app.reelify.core.content.GeneratedContentNormalizer.clean(spoken)
         c.projects.applyScript(pid, b.project.script ?: app.reelify.core.model.ScriptMeta(), listOf(SectionScript(section.index, clean, headline.trim(), section.captionEmphasis)), "manual edit", respectLocks = false, onlyIndex = section.index)
+    }
+
+    fun saveToMyVoice(spoken: String) = viewModelScope.launch {
+        val clean = app.reelify.core.content.GeneratedContentNormalizer.clean(spoken).trim()
+        if (clean.isBlank()) return@launch
+        c.content.saveOwnerVoiceSample(clean)
+        _ui.update { it.copy(summary = "Saved wording to your voice style guide") }
     }
 
     fun toggleLock(section: ReelSection) = viewModelScope.launch { c.projects.updateSectionQuiet(pid, section.id) { it.copy(locked = !it.locked) } }

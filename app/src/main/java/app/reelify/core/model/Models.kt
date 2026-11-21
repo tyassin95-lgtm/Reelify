@@ -1,8 +1,22 @@
 package app.reelify.core.model
 
+import app.reelify.core.template.LocalizedText
 import kotlinx.serialization.Serializable
 
 /** The user's original idea and optional notes (Screen 4). */
+@Serializable
+enum class SocialPlatform(val wire: String, val label: LocalizedText) {
+    INSTAGRAM("instagram", LocalizedText("Instagram Reels", "إنستغرام ريلز")),
+    SNAPCHAT("snapchat", LocalizedText("Snapchat", "سناب شات")),
+}
+
+@Serializable
+enum class TeleprompterMode(val wire: String, val label: LocalizedText) {
+    AUTO_FIT("auto_fit", LocalizedText("Auto-fit section", "ملاءمة تلقائية لمدة المقطع")),
+    MATCH_SHOT("match_shot", LocalizedText("Match shot timer", "تزامن مع التايمر")),
+    MANUAL("manual", LocalizedText("Fixed pace", "سرعة ثابتة")),
+}
+
 @Serializable
 data class ReelConcept(
     val summary: String = "",
@@ -14,6 +28,7 @@ data class ReelConcept(
     val cta: String = "",
     val mustInclude: List<String> = emptyList(),
     val excludedClaims: List<String> = emptyList(),
+    val platform: SocialPlatform = SocialPlatform.INSTAGRAM,
 )
 
 @Serializable

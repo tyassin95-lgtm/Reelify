@@ -66,9 +66,14 @@ object ScriptValidator {
         if (s.onScreenHeadline.isNotBlank() && !PlanValidator.languageMatches(s.onScreenHeadline, language)) add("$where: on_screen_headline must be in ${language.displayName}")
         if (TimingEstimator().countWords(s.onScreenHeadline) > 7) add("$where: on_screen_headline must be at most 5 words")
         val n = TimingEstimator().countWords(spoken)
-        if (n > (budget * 1.15f).toInt()) add("$where: too long to speak in time ($n words; budget about $budget words${if (hookText != null) " including the hook" else ""})")
-        if (n < maxOf(4, (budget * 0.35f).toInt())) add("$where: too short ($n words; aim for about ${(budget * 0.7f).toInt()} words)")
+        if (n > (budget * 1.16f).toInt()) add("$where: too long to speak in time ($n words; budget about $budget words${if (hookText != null) " including the hook" else ""})")
+        val minRequired = maxOf(6, (budget * 0.55f).toInt())
+        if (n < minRequired) add("$where: too short for the shot duration ($n words; aim for ${(budget * 0.80f).toInt()}–$budget words)")
+        else if (n < (budget * 0.78f).toInt()) notes += "Shot ${s.index}: slightly brief ($n words vs ~${(budget * 0.85f).toInt()} ideal) — expand with one specific clinical detail."
         if (Regex("\\[[^\\]]{2,}\\]|\\((camera|cut|b-roll|pause|music)[^)]*\\)", RegexOption.IGNORE_CASE).containsMatchIn(s.spokenScript)) add("$where: remove stage directions from spoken_script")
+        val fillers = DialectChecker.genericFillerHits(s.spokenScript)
+        if (fillers.isNotEmpty()) notes += "Shot ${s.index}: replace generic promo wording (${fillers.joinToString()}) with specific device/clinical details."
+        if (fillers.size >= 2) add("$where: remove generic promotional filler (${fillers.take(2).joinToString()}) and teach concrete facts.")
         if (language == ReelLanguage.IRAQI_ARABIC) {
             val report = DialectChecker.analyze(s.spokenScript)
             if (report.likelyFormal) add("$where: sounds like formal MSA (${report.formalHits.take(4).joinToString("، ")}). Rewrite in natural spoken Iraqi.")
@@ -101,6 +106,13 @@ object ScriptValidator {
         if (dto.ctaStyle !in IraqiStyleGuide.ctaStyles) errors += "invalid cta_style"
         val hook = dto.hookOptions.firstOrNull()?.text
         dto.sections.forEach { s -> errors += sectionErrors(s, if (s.index == 1) hook else null, template, language, budget, forbidden, notes) }
+        val combinedSpoken = dto.sections.joinToString(" ") { it.spokenScript }
+        val totalFillers = DialectChecker.genericFillerHits(combinedSpoken)
+        if (totalFillers.size >= 2) {
+            errors += "script uses repetitive promotional clichés (${totalFillers.take(2).joinToString()}); teach concrete treatment specifics instead."
+        }
+        val consultCount = DialectChecker.excessiveConsultationHits(combinedSpoken)
+        if (consultCount > 2) notes += "Consultation disclaimer is repeated $consultCount times; keep it once cleanly."
         return ScriptCheck(errors.distinct(), notes.distinct())
     }
 

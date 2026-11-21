@@ -38,11 +38,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -112,60 +116,202 @@ fun StageHeading(step: Int, title: String, subtitle: String? = null, modifier: M
 // ------------------------------------------------------------------------------------------ templates
 
 /**
+ * Pure normalized geometry (in 0f..1f frame-local coordinates) for shot miniature frames.
+ * Every element is strictly bounded inside [0f..1f] so artwork never overflows its frame.
+ */
+object TemplateFrameGeometry {
+    data class NormalizedRect(val left: Float, val top: Float, val width: Float, val height: Float) {
+        val right: Float get() = left + width
+        val bottom: Float get() = top + height
+    }
+
+    data class TalkingGeometry(
+        val headCenterX: Float,
+        val headCenterY: Float,
+        val headRadiusFracW: Float,
+        val headRadiusFracH: Float,
+        val torso: NormalizedRect,
+        val eyeLineY: Float,
+        val headlineBar: NormalizedRect,
+    )
+
+    data class DeviceGeometry(
+        val handpiece: NormalizedRect,
+        val beamTopY: Float,
+        val beamBottomY: Float,
+        val targetCenterY: Float,
+        val targetRadiusFracW: Float,
+        val micCenter: Pair<Float, Float>,
+        val micRadiusFracW: Float,
+        val headlineBar: NormalizedRect,
+    )
+
+    fun talking(framing: app.reelify.core.template.FramingPreset): TalkingGeometry {
+        val scale = when (framing) {
+            app.reelify.core.template.FramingPreset.CLOSE_UP -> 1.12f
+            app.reelify.core.template.FramingPreset.MEDIUM -> 0.82f
+            else -> 0.96f
+        }
+        val headRW = (0.145f * scale).coerceIn(0.08f, 0.22f)
+        // Frame aspect is 9:16, so head radius in height fraction is headRW * (9f / 16f)
+        val headRH = headRW * (9f / 16f)
+        val headCY = 0.35f
+        val torsoTop = (headCY + headRH * 1.32f).coerceIn(0.42f, 0.58f)
+        val torsoBottom = 0.80f
+        val torsoW = (0.58f * scale).coerceIn(0.36f, 0.78f)
+        val torsoLeft = (1f - torsoW) / 2f
+        return TalkingGeometry(
+            headCenterX = 0.5f,
+            headCenterY = headCY,
+            headRadiusFracW = headRW,
+            headRadiusFracH = headRH,
+            torso = NormalizedRect(torsoLeft, torsoTop, torsoW, (torsoBottom - torsoTop).coerceAtLeast(0.10f)),
+            eyeLineY = (headCY - headRH * 0.12f).coerceIn(0.18f, 0.45f),
+            headlineBar = NormalizedRect(0.16f, 0.865f, 0.68f, 0.042f),
+        )
+    }
+
+    fun device(): DeviceGeometry = DeviceGeometry(
+        handpiece = NormalizedRect(0.42f, 0.21f, 0.16f, 0.34f),
+        beamTopY = 0.55f,
+        beamBottomY = 0.71f,
+        targetCenterY = 0.73f,
+        targetRadiusFracW = 0.17f,
+        micCenter = 0.79f to 0.14f,
+        micRadiusFracW = 0.065f,
+        headlineBar = NormalizedRect(0.16f, 0.865f, 0.68f, 0.042f),
+    )
+}
+
+/**
  * Code-drawn template thumbnail: three 9:16 mini-frames showing each shot's framing
  * (silhouette size for talking shots, device/beam motif for B-roll) on the template's accent.
+ * All drawing is clipped cleanly to both the outer rounded card and each inner shot frame.
  */
 @Composable
 fun TemplateThumbnail(template: ReelTemplate, modifier: Modifier = Modifier) {
     val accent = Color(template.accent)
-    Canvas(modifier) {
-        drawRoundRect(Brush.linearGradient(listOf(accent.copy(alpha = 0.55f), Color(0xFF16141C)), Offset.Zero, Offset(size.width, size.height)), cornerRadius = CornerRadius(18.dp.toPx()))
-        // template motif glow
-        drawCircle(Brush.radialGradient(listOf(Color.White.copy(alpha = 0.12f), Color.Transparent), Offset(size.width * 0.85f, size.height * 0.1f), size.width * 0.6f), size.width * 0.6f, Offset(size.width * 0.85f, size.height * 0.1f))
-        val pad = size.width * 0.06f
-        val gap = size.width * 0.035f
-        val fw = (size.width - pad * 2 - gap * 2) / 3f
-        val fh = (fw * 16f / 9f).coerceAtMost(size.height - pad * 2)
-        val top = (size.height - fh) / 2f
-        template.shots.sortedBy { it.index }.forEachIndexed { i, shot ->
-            val left = pad + i * (fw + gap)
-            drawShotFrame(shot, Offset(left, top), Size(fw, fh), accent, template.previewAsset)
+    Canvas(modifier.clip(RoundedCornerShape(18.dp))) {
+        val outerRadius = CornerRadius(18.dp.toPx())
+        val outerPath = Path().apply {
+            addRoundRect(RoundRect(Rect(Offset.Zero, size), outerRadius))
+        }
+        clipPath(outerPath) {
+            drawRoundRect(
+                Brush.linearGradient(listOf(accent.copy(alpha = 0.52f), Color(0xFF15131B)), Offset.Zero, Offset(size.width, size.height)),
+                cornerRadius = outerRadius,
+            )
+            // Contained template motif glow inside the clipped card
+            val glowCenter = Offset(size.width * 0.85f, size.height * 0.14f)
+            val glowRadius = size.width * 0.55f
+            drawCircle(
+                Brush.radialGradient(listOf(Color.White.copy(alpha = 0.14f), Color.Transparent), glowCenter, glowRadius),
+                glowRadius,
+                glowCenter,
+            )
+            val pad = size.width * 0.065f
+            val gap = size.width * 0.04f
+            val fw = ((size.width - pad * 2 - gap * 2) / 3f).coerceAtLeast(1f)
+            val fh = (fw * 16f / 9f).coerceAtMost((size.height - pad * 2).coerceAtLeast(1f))
+            val totalFramesWidth = fw * 3f + gap * 2f
+            val startX = (size.width - totalFramesWidth) / 2f
+            val top = (size.height - fh) / 2f
+            template.shots.sortedBy { it.index }.forEachIndexed { i, shot ->
+                val left = startX + i * (fw + gap)
+                drawShotFrame(shot, Offset(left, top), Size(fw, fh), accent, template.previewAsset)
+            }
         }
     }
 }
 
 private fun DrawScope.drawShotFrame(shot: ShotRecipe, topLeft: Offset, sz: Size, accent: Color, art: TemplateArt) {
-    val r = CornerRadius(sz.width * 0.12f)
-    drawRoundRect(Color(0xFF0C0B10), topLeft, sz, r)
-    drawRoundRect(Color.White.copy(alpha = 0.10f), topLeft, sz, r, style = Stroke(1.2f))
-    val cx = topLeft.x + sz.width / 2
-    if (shot.requiredMedia == MediaRequirement.TALKING_TO_CAMERA) {
-        val scale = when (shot.framing) {
-            app.reelify.core.template.FramingPreset.CLOSE_UP -> 1.25f
-            app.reelify.core.template.FramingPreset.MEDIUM -> 0.8f
-            else -> 1f
+    val r = CornerRadius(sz.width * 0.14f)
+    val framePath = Path().apply { addRoundRect(RoundRect(Rect(topLeft, sz), r)) }
+    clipPath(framePath) {
+        drawRect(Color(0xFF0D0C12), topLeft, sz)
+        // Subtle top gradient sheen inside the miniature frame
+        drawRect(
+            Brush.verticalGradient(listOf(accent.copy(alpha = 0.12f), Color.Transparent), topLeft.y, topLeft.y + sz.height * 0.45f),
+            topLeft,
+            Size(sz.width, sz.height * 0.45f),
+        )
+        val cx = topLeft.x + sz.width * 0.5f
+        if (shot.requiredMedia == MediaRequirement.TALKING_TO_CAMERA) {
+            val g = TemplateFrameGeometry.talking(shot.framing)
+            val headR = sz.width * g.headRadiusFracW
+            val headCenter = Offset(topLeft.x + sz.width * g.headCenterX, topLeft.y + sz.height * g.headCenterY)
+            // Eye-line guide
+            drawLine(
+                Color.White.copy(alpha = 0.18f),
+                Offset(topLeft.x + sz.width * 0.10f, topLeft.y + sz.height * g.eyeLineY),
+                Offset(topLeft.x + sz.width * 0.90f, topLeft.y + sz.height * g.eyeLineY),
+                1f,
+            )
+            // Bounded shoulders/torso silhouette
+            drawRoundRect(
+                accent.copy(alpha = 0.86f),
+                Offset(topLeft.x + sz.width * g.torso.left, topLeft.y + sz.height * g.torso.top),
+                Size(sz.width * g.torso.width, sz.height * g.torso.height),
+                CornerRadius(sz.width * 0.24f),
+            )
+            // Head silhouette
+            drawCircle(Color(0xFFEBD9CD).copy(alpha = 0.94f), headR, headCenter)
+            // Optional B-roll indicator dot
+            if (shot.optionalBroll) {
+                drawCircle(Color.White.copy(alpha = 0.72f), sz.width * 0.055f, Offset(topLeft.x + sz.width * 0.80f, topLeft.y + sz.height * 0.14f))
+            }
+        } else {
+            val g = TemplateFrameGeometry.device()
+            // Clean handpiece silhouette
+            drawRoundRect(
+                Color(0xFFCBD5E1).copy(alpha = 0.92f),
+                Offset(topLeft.x + sz.width * g.handpiece.left, topLeft.y + sz.height * g.handpiece.top),
+                Size(sz.width * g.handpiece.width, sz.height * g.handpiece.height),
+                CornerRadius(sz.width * 0.06f),
+            )
+            // Focused energy beam
+            drawLine(
+                accent,
+                Offset(cx, topLeft.y + sz.height * g.beamTopY),
+                Offset(cx, topLeft.y + sz.height * g.beamBottomY),
+                (sz.width * 0.045f).coerceAtLeast(1.5f),
+            )
+            // Target glow inside frame
+            val targetC = Offset(cx, topLeft.y + sz.height * g.targetCenterY)
+            val targetR = sz.width * g.targetRadiusFracW
+            drawCircle(accent.copy(alpha = 0.34f), targetR, targetC)
+            drawCircle(accent.copy(alpha = 0.75f), targetR * 0.45f, targetC)
+            // Voiceover indicator dot
+            drawCircle(
+                Color.White.copy(alpha = 0.78f),
+                sz.width * g.micRadiusFracW,
+                Offset(topLeft.x + sz.width * g.micCenter.first, topLeft.y + sz.height * g.micCenter.second),
+            )
         }
-        val headR = sz.width * 0.17f * scale
-        val headY = topLeft.y + sz.height * 0.38f
-        drawCircle(Color(0xFFE8D5C8).copy(alpha = 0.92f), headR, Offset(cx, headY))
-        drawRoundRect(accent.copy(alpha = 0.85f), Offset(cx - sz.width * 0.34f * scale, headY + headR * 1.15f), Size(sz.width * 0.68f * scale, sz.height), CornerRadius(sz.width * 0.3f))
-        // eye-line guide
-        drawLine(Color.White.copy(alpha = 0.25f), Offset(topLeft.x + 4f, headY - headR * 0.1f), Offset(topLeft.x + sz.width - 4f, headY - headR * 0.1f), 1f)
-    } else {
-        // device / B-roll motif: handpiece + beam
-        val hx = cx - sz.width * 0.08f
-        drawRoundRect(Color(0xFFCBD5E1).copy(alpha = 0.9f), Offset(hx, topLeft.y + sz.height * 0.22f), Size(sz.width * 0.16f, sz.height * 0.42f), CornerRadius(8f))
-        drawLine(accent, Offset(cx, topLeft.y + sz.height * 0.64f), Offset(cx, topLeft.y + sz.height * 0.8f), sz.width * 0.05f)
-        drawCircle(accent.copy(alpha = 0.35f), sz.width * 0.22f, Offset(cx, topLeft.y + sz.height * 0.82f))
-        // mic glyph (voiceover)
-        drawCircle(Color.White.copy(alpha = 0.75f), sz.width * 0.07f, Offset(topLeft.x + sz.width * 0.78f, topLeft.y + sz.height * 0.12f))
+
+        // Template-specific visual motif badge in top-left inside safe margin
+        val badgeR = sz.width * 0.105f
+        val badgeC = Offset(topLeft.x + sz.width * 0.20f, topLeft.y + sz.height * 0.135f)
+        val badgeColor = when {
+            art == TemplateArt.THREE_THINGS -> accent
+            art == TemplateArt.MYTH && shot.index == 1 -> Color(0xFFEF4444)
+            art == TemplateArt.MYTH && shot.index == 2 -> Color(0xFF10B981)
+            art == TemplateArt.QUESTION && shot.index == 1 -> accent
+            art == TemplateArt.PROBLEM && shot.index == 1 -> accent.copy(alpha = 0.85f)
+            else -> Color.White.copy(alpha = 0.22f)
+        }
+        drawCircle(badgeColor, badgeR, badgeC)
+
+        // Headline / caption indicator bar cleanly above bottom border
+        val hb = if (shot.requiredMedia == MediaRequirement.TALKING_TO_CAMERA) TemplateFrameGeometry.talking(shot.framing).headlineBar else TemplateFrameGeometry.device().headlineBar
+        drawRoundRect(
+            Color.White.copy(alpha = 0.84f),
+            Offset(topLeft.x + sz.width * hb.left, topLeft.y + sz.height * hb.top),
+            Size(sz.width * hb.width, (sz.height * hb.height).coerceAtLeast(2f)),
+            CornerRadius(sz.width * 0.04f),
+        )
     }
-    // shot-number badge; numbered motif for "three things"
-    val badgeR = sz.width * 0.13f
-    val badgeC = Offset(topLeft.x + sz.width * 0.2f, topLeft.y + sz.width * 0.2f)
-    drawCircle(if (art == TemplateArt.THREE_THINGS || art == TemplateArt.MYTH && shot.index == 1) accent else Color.Black.copy(alpha = 0.55f), badgeR, badgeC)
-    // headline bar
-    drawRoundRect(Color.White.copy(alpha = 0.85f), Offset(topLeft.x + sz.width * 0.15f, topLeft.y + sz.height * 0.9f - 6f), Size(sz.width * 0.7f, sz.height * 0.03f), CornerRadius(4f))
+    drawRoundRect(Color.White.copy(alpha = 0.16f), topLeft, sz, r, style = Stroke(1.2f))
 }
 
 @Composable
@@ -198,8 +344,14 @@ fun ReelTemplateCard(
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             shotLabels.forEachIndexed { i, l ->
-                Text("${i + 1} · $l", style = MaterialTheme.typography.labelMedium.copy(fontSize = 10.sp), color = Rf.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(Rf.Surface2).padding(horizontal = 6.dp, vertical = 4.dp))
+                Text(
+                    "${i + 1} · $l",
+                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 10.sp),
+                    color = Rf.TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(Rf.Surface2).padding(horizontal = 5.dp, vertical = 4.dp),
+                )
             }
         }
     }

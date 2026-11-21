@@ -41,6 +41,7 @@ data class CameraDefaults(
     val teleprompterOpacity: Float = 0.55f,
     val teleprompterMirror: Boolean = false,
     val teleprompterTop: Boolean = true,
+    val teleprompterMode: app.reelify.core.model.TeleprompterMode = app.reelify.core.model.TeleprompterMode.AUTO_FIT,
     val beauty: BeautySettings = BeautySettings.forPreset(app.reelify.core.model.BeautyPreset.NATURAL),
     val faceGuide: Boolean = true,
 )

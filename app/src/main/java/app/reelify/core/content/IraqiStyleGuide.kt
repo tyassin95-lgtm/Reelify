@@ -157,6 +157,32 @@ object DialectChecker {
         return DialectReport(formal.distinct(), iraqi.distinct(), overused)
     }
 
+    /** Detects weak promotional / generic clinic filler in either English or Iraqi Arabic. */
+    fun genericFillerHits(text: String): List<String> = genericFillerPhrases.filter { text.contains(it, ignoreCase = true) }
+
+    fun excessiveConsultationHits(text: String): Int =
+        consultationPhrases.count { Regex(Regex.escape(it), RegexOption.IGNORE_CASE).containsMatchIn(text) }
+
+    private val consultationPhrases = listOf(
+        "individual assessment", "book a consultation", "in-person assessment", "consult your clinician",
+        "التقييم الفردي", "استشارة الطبيب", "فحص الطبيب", "تقييم الطبيب", "زورونا للاستشارة", "احجز استشارة",
+    )
+
+    private val genericFillerPhrases = listOf(
+        // English AI clichés
+        "transform your skin", "unlock glowing", "experience the difference", "radiant glow today",
+        "cutting-edge technology", "revolutionary treatment", "game-changer", "secret to flawless",
+        "achieve the skin of your dreams", "tailored to your unique needs", "schedule your consultation today",
+        "say goodbye to", "level up your skincare", "discover the magic",
+        // Arabic MSA/promo clichés
+        "احصل على بشرة مشرقة", "تقنية ثورية", "وداعاً لكل مشاكل", "أحدث التقنيات العالمية",
+        "نضارة لا مثيل لها", "احجز جلستك الآن واحصل", "بشرة خالية من العيوب", "النتائج المذهلة",
+        "مخصصة لاحتياجات بشرتك الفريدة", "استعد لإشراقة", "تجربة فريدة من نوعها",
+    )
+
     /** English overused-phrase check (dialect markers don't apply). */
-    fun overused(text: String): List<String> = IraqiStyleGuide.overusedPhrases.filter { text.contains(it, ignoreCase = true) }
+    fun overused(text: String): List<String> =
+        (IraqiStyleGuide.overusedPhrases + genericFillerHits(text))
+            .filter { text.contains(it, ignoreCase = true) }
+            .distinctBy { it.lowercase() }
 }

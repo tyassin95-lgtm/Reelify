@@ -131,9 +131,79 @@ fun SettingsTab(nav: NavHostController) {
         }
         item {
             CinematicCard {
-                Text("Speaking pace (timing estimates)", style = MaterialTheme.typography.titleMedium)
+                Text("Speaking pace (timing estimates & teleprompter)", style = MaterialTheme.typography.titleMedium)
                 LabeledSlider("English words / second", settings.englishWordsPerSecond, { v -> upd { it.copy(englishWordsPerSecond = v) } }, range = 1.6f..3.4f, valueText = "%.1f".format(settings.englishWordsPerSecond))
                 LabeledSlider("Arabic words / second", settings.arabicWordsPerSecond, { v -> upd { it.copy(arabicWordsPerSecond = v) } }, range = 1.4f..3.0f, valueText = "%.1f".format(settings.arabicWordsPerSecond))
+
+                var showCal by androidx.compose.runtime.remember { mutableStateOf(false) }
+                var calLang by androidx.compose.runtime.remember { mutableStateOf(ReelLanguage.IRAQI_ARABIC) }
+                var calRunning by androidx.compose.runtime.remember { mutableStateOf(false) }
+                var calStartMs by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(0L) }
+                var calElapsedMs by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(0L) }
+
+                androidx.compose.runtime.LaunchedEffect(calRunning) {
+                    while (calRunning) {
+                        calElapsedMs = (System.currentTimeMillis() - calStartMs).coerceAtLeast(0L)
+                        kotlinx.coroutines.delay(100)
+                    }
+                }
+
+                GhostButton(
+                    if (showCal) "Hide pace calibration" else "Calibrate with my real reading voice",
+                    {
+                        calRunning = false
+                        showCal = !showCal
+                    },
+                    Modifier.fillMaxWidth(),
+                )
+
+                if (showCal) {
+                    val sampleText = if (calLang == ReelLanguage.IRAQI_ARABIC) {
+                        "هواي مراجعين يسألون إذا هذا الإجراء يوجع أو يسوي تقشير قوي بالوجه، والجواب يعتمد على عمق الجلسة ونوع البشرة واهتمامك بواقي الشمس بعد الجلسة."
+                    } else {
+                        "Most patients ask whether this laser peels the skin or requires time off work, and the real answer depends on pulse width, spot depth, and strict sun care."
+                    }
+                    val wordCount = app.reelify.core.timing.TimingEstimator().countWords(sampleText)
+                    androidx.compose.foundation.layout.Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                        Chip("Iraqi Arabic", calLang == ReelLanguage.IRAQI_ARABIC, { if (!calRunning) calLang = ReelLanguage.IRAQI_ARABIC })
+                        Chip("English", calLang == ReelLanguage.ENGLISH, { if (!calRunning) calLang = ReelLanguage.ENGLISH })
+                    }
+                    Text(
+                        "Read aloud naturally ($wordCount words):",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Rf.TextSecondary,
+                    )
+                    Text(sampleText, style = MaterialTheme.typography.bodyMedium)
+                    if (calElapsedMs > 0L) {
+                        val measured = app.reelify.core.timing.TimingEstimator.calibratedPaceFromSample(wordCount, calElapsedMs)
+                        Text(
+                            "Measured: %.2f words/sec (%.1fs)".format(measured, calElapsedMs / 1000f),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = Rf.Success,
+                        )
+                    }
+                    PrimaryButton(
+                        text = if (calRunning) "Stop & save my pace (%.1fs)".format(calElapsedMs / 1000f) else "Start reading timer",
+                        onClick = {
+                            if (!calRunning) {
+                                calStartMs = System.currentTimeMillis()
+                                calElapsedMs = 0L
+                                calRunning = true
+                            } else {
+                                calRunning = false
+                                val finalMs = (System.currentTimeMillis() - calStartMs).coerceAtLeast(800L)
+                                calElapsedMs = finalMs
+                                val wps = app.reelify.core.timing.TimingEstimator.calibratedPaceFromSample(wordCount, finalMs)
+                                if (calLang == ReelLanguage.IRAQI_ARABIC) {
+                                    upd { it.copy(arabicWordsPerSecond = wps) }
+                                } else {
+                                    upd { it.copy(englishWordsPerSecond = wps) }
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
         }
         item { NavRow(Icons.Rounded.Storage, "Storage & cleanup", "Project media, caches and free space") { nav.navigate(Routes.STORAGE) } }

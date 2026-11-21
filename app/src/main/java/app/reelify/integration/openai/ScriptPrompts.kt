@@ -9,22 +9,26 @@ import app.reelify.core.content.StyleExample
  * the Iraqi one is not a translation of the English one. Bump [VERSION] when wording changes.
  */
 object ScriptPrompts {
-    const val VERSION = "2026.11-v2"
+    const val VERSION = "2026.11-v2.1"
 
     private val SHARED_RULES = """
-You write ONLY the words of a short-form reel for a professional aesthetic laser specialist. The production template (camera, framing, lighting, transitions, music, sound effects, captions, branding) is already fixed by the app — never describe or change any of it, and never write stage directions, camera notes, emoji, hashtags or markdown inside spoken lines.
+You write ONLY the spoken words and short headlines of a high-value clinical reel for an aesthetic dermatology and laser specialist. The production template (camera, framing, lighting, transitions, music, sound effects, captions, branding) is fixed by the app — never describe or change any of it, and never write stage directions, camera notes, emoji, hashtags or markdown inside spoken lines.
 
-Structure: exactly three sections of equal duration, following the template's shot roles in order. Respect each section's word budget so it can be spoken at a natural pace. Section 1's spoken_script continues straight AFTER the hook (the app places the chosen hook first) — do not repeat the hook.
+Clinical substance & anti-filler rule:
+- Teach ONE genuine mechanism, parameter (wavelength, depth, pulse width), realistic expectation, contraindication, or misconception from the VERIFIED FACTUAL BRIEF.
+- NEVER write generic filler ("transform your skin", "unlock glowing radiance", "cutting-edge technology", "experience the difference", "أحدث التقنيات", "نضارة لا مثيل لها", "بشرة خالية من العيوب", "احجز جلستك الآن"). Every sentence must carry specific clinical meaning.
+- Mention individual clinical assessment naturally AT MOST ONCE across the entire reel — never pad two or three shots with "it depends on individual assessment".
+- For HIFU (CFU Èlife), NEVER call it a laser; always explain it as focused ultrasound. For unconfirmed clinics/treatments marked NEEDS CONFIGURATION, stay strictly on barrier assessment, sterile hygiene, and consulting the clinic — zero unverified specs or active ingredient claims.
 
-Hooks: give three hooks that use three DIFFERENT techniques (e.g. curiosity, common mistake, expert insight) and genuinely different angles — not paraphrases of one sentence. Each must be speakable in under about 3 seconds and must not promise results.
+Duration & spoken pacing:
+- Strictly three sections of equal duration, following each shot's role and exact word budget target so the speaker finishes cleanly near the end of the shot without rushing or leaving awkward empty dead air.
+- Section 1's spoken_script continues straight AFTER the hook (the app places the chosen hook first) — do not repeat the hook.
 
-Headlines: max 5 words, plain text, no quotes.
+Hooks & platform tone:
+- Give three hooks using genuinely different clinical techniques (myth contradiction, specific number/physics curiosity, blunt patient question, common mistake). Speakable in under ~3 seconds, zero exaggeration.
+- Instagram Reels: sharper visual curiosity in hook + clear save-worthy clinical breakdown. Snapchat: warmer, direct, first-person clinician voice speaking closely to the viewer.
 
-Medical responsibility: use only facts from the approved treatment profile or conservative general knowledge. Never invent indications, device capabilities, statistics, testimonials or results. Never promise guaranteed, permanent, risk-free, painless-for-everyone or instant results. Mention individual variation / assessment where it matters. If the profile is marked as needing configuration, stay generic and do not describe its mechanism or indications. When a template shot states a myth, present it clearly as a myth and correct it.
-
-Variety: the CTA should fit the reel (choose one of the approved CTA styles); do not force a consultation CTA every time. Avoid the creator's recently used hooks listed in the context.
-
-Output must match the JSON schema exactly.
+Headlines: max 5 words, plain text, no quotes. Output must match the JSON schema exactly.
 """.trimIndent()
 
     val SYSTEM_EN = """
@@ -73,13 +77,13 @@ DIALECT RULES (critical):
     // ------------------------------------------------------------------ tasks
 
     val TASK_GENERATE = """
-TASK: WRITE THE SCRIPT (v2)
-Write the three sections for the template below about the chosen topic. Each section must do exactly what its shot role and writing brief say. Make the opening sections earn attention and the last section land with a clear, honest takeaway and a fitting CTA.
+TASK: WRITE CLINICAL REEL SCRIPT (v2.1)
+Write the three equal-duration sections grounded strictly in the VERIFIED FACTUAL BRIEF. Teach real device/skin science clearly in natural spoken language, match every shot's role and specific word-count range (aim for the middle-to-upper end of each shot's word target so there is no dead air), avoid promotional clichés, and close Shot 3 cleanly with an honest takeaway and natural CTA.
 """.trimIndent()
 
     val TASK_IDEAS = """
-TASK: FRESH IDEAS (v2)
-Propose four distinct, relevant reel ideas for this treatment and template. Each must be supported by the approved profile facts (no invented claims for novelty), must differ from the recently used topics, and must have a scroll-stopping hook in the reel language.
+TASK: GENERATE FIVE SPECIFIC CLINICAL CONCEPTS (v2.1)
+Propose five distinct, genuinely educational reel concepts for this treatment and template, anchored to the VERIFIED FACTUAL BRIEF (include exact fact IDs in supporting_fact_ids when present). Avoid vague templates like "Why {treatment} is great" or repeated generic consultations; make each title and hook teach a sharp patient question, mechanism insight, realistic limit, or aftercare safeguard.
 """.trimIndent()
 
     val TASK_HOOKS = """
@@ -92,8 +96,9 @@ Write three NEW opening hooks for this script using three different techniques. 
         ScriptAction.MORE_NATURAL_IRAQI -> "TASK: MORE NATURAL IRAQI (v2)\nRewrite the target section(s) into natural, conversational Iraqi Arabic as a credible clinician would say it on camera. Remove MSA structures and literal translation. Keep meaning, terminology and preferred spellings. Do not add slang for its own sake."
         ScriptAction.SHORTEN -> "TASK: SHORTEN (v2)\nShorten the target section(s) to fit comfortably within the word budget. Keep the main point and natural flow; remove filler and repetition."
         ScriptAction.MORE_PROFESSIONAL -> "TASK: MORE PROFESSIONAL (v2)\nAdjust the tone of the target section(s) to be more polished and clinically credible while staying conversational. Do NOT change, add or strengthen any treatment claim."
-        ScriptAction.REGENERATE_SHOT -> "TASK: NEW WORDS FOR ONE SHOT (v2)\nWrite fresh dialogue for the target section only, doing the same job for its shot role, with a different angle from the current version."
-        else -> "TASK: REWRITE (v2)\nRewrite the target section(s) as instructed."
+        ScriptAction.REGENERATE_SHOT -> "TASK: NEW WORDS FOR ONE SHOT (v2.1)\nWrite fresh dialogue for the target section only, doing the same job for its shot role, with a different specific fact or framing angle from the current version."
+        ScriptAction.SOUND_LIKE_ME -> "TASK: SOUND MORE LIKE THE CREATOR (v2.1)\nRewrite the target section(s) adopting the phrasing rhythm, sentence openings, and personal clinical warmth shown in the owner's saved style examples, while keeping every medical fact strictly accurate."
+        else -> "TASK: REWRITE (v2.1)\nRewrite the target section(s) as instructed."
     } + "\nReturn ONLY the target section(s). Other sections are context and must not be repeated."
 
     val TASK_EDITORIAL = """
@@ -110,4 +115,5 @@ enum class ScriptAction(val label: String, val labelAr: String) {
     SHORTEN("Shorten", "اختصر"),
     MORE_PROFESSIONAL("More professional", "أكثر احترافية"),
     REGENERATE_SHOT("Try another", "جرّب كلام ثاني"),
+    SOUND_LIKE_ME("Make this sound more like me", "خلّيه يشبه أسلوبي"),
 }

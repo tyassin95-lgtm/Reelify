@@ -93,7 +93,7 @@ object BuiltInTemplates {
         captionPresetId = CaptionPresetId.PREMIUM_MINIMAL, musicPresetId = "calm_premium", transitionPresetId = "subtle_zoom", brandingPresetId = "signature",
         colorLook = ColorLook.CLEAN, colorIntensity = 0.7f, talkingBeauty = BeautyPreset.NATURAL, sfxStrategy = SfxStrategy.INTRO_ONLY,
         accent = 0xFFE11D48,
-        structureBrief = "A credible specialist explains one idea: hook → clear explanation → practical takeaway + CTA.",
+        structureBrief = "Credible clinician teaches ONE concrete mechanism, wavelength/depth parameter, or biological timeline. Shot 1: direct pattern-interrupt hook challenging a common assumption (no generic filler). Shot 2 (B-roll VO): explain HOW the device/protocol works clinically with a verified fact. Shot 3: practical takeaway, qualification + calm CTA.",
     )
 
     val MYTH_BUSTER = ReelTemplate(
@@ -114,7 +114,7 @@ object BuiltInTemplates {
         captionPresetId = CaptionPresetId.BOLD_ENGAGEMENT, musicPresetId = "modern_light", transitionPresetId = "light_flash", brandingPresetId = "minimal",
         colorLook = ColorLook.BRIGHT_SOCIAL, colorIntensity = 0.55f, talkingBeauty = BeautyPreset.CLEAN_STUDIO, sfxStrategy = SfxStrategy.SECTION_ACCENTS,
         accent = 0xFFF59E0B,
-        structureBrief = "Myth → correction with an approved fact → memorable takeaway + CTA. The myth must be presented as false.",
+        structureBrief = "Myth → clinical physics correction → patient safeguard. Shot 1: voice the exact misconception clearly and challenge it immediately as FALSE. Shot 2 (B-roll VO): explain the real biology, physics, or risk with an approved fact. Shot 3: clear rule patients remember before booking + CTA.",
     )
 
     val TREATMENT_SHOWCASE = ReelTemplate(
@@ -136,7 +136,7 @@ object BuiltInTemplates {
         captionPresetId = CaptionPresetId.PREMIUM_MINIMAL, musicPresetId = "luxury", transitionPresetId = "soft_dissolve", brandingPresetId = "signature",
         colorLook = ColorLook.WARM, colorIntensity = 0.5f, talkingBeauty = BeautyPreset.SOFT_GLOW, sfxStrategy = SfxStrategy.INTRO_ONLY,
         lightOverlay = true, accent = 0xFFD4AF37,
-        structureBrief = "Treatment introduction → what a session looks like (over footage) → suitability + assessment + CTA.",
+        structureBrief = "Inside-the-room educational walkthrough: Shot 1: hook on what concern or prep step viewers are seeing. Shot 2 (B-roll over procedure footage): step-by-step technique, comfort, calibration, or hygiene detail. Shot 3: honest downtime/aftercare reality, candidacy + CTA.",
     )
 
     val THREE_THINGS = ReelTemplate(
@@ -156,7 +156,7 @@ object BuiltInTemplates {
         captionPresetId = CaptionPresetId.BOLD_ENGAGEMENT, musicPresetId = "modern_light", transitionPresetId = "clean_cut", brandingPresetId = "minimal",
         colorLook = ColorLook.CLEAN, colorIntensity = 0.75f, talkingBeauty = BeautyPreset.CLEAN_STUDIO, sfxStrategy = SfxStrategy.SECTION_ACCENTS,
         titlePlacement = TitlePlacement.UPPER_THIRD, accent = 0xFF8B5CF6,
-        structureBrief = "Exactly three distinct, numbered insights (one per shot). Headlines must be numbered: 1, 2, 3.",
+        structureBrief = "Exactly THREE concrete, distinct, numbered takeaways (one per shot; headlines MUST start with 1, 2, 3). Every point must teach a specific parameter, rule, timing factor, or limitation from verified facts, ending Shot 3 with point 3 + CTA.",
     )
 
     val PATIENT_QUESTION = ReelTemplate(
@@ -176,7 +176,7 @@ object BuiltInTemplates {
         captionPresetId = CaptionPresetId.CLEAN_CLINICAL, musicPresetId = "clinical_soft", transitionPresetId = "soft_dissolve", brandingPresetId = "clinical",
         colorLook = ColorLook.COOL_CLINICAL, colorIntensity = 0.45f, talkingBeauty = BeautyPreset.CLINICAL_PREMIUM, sfxStrategy = SfxStrategy.INTRO_ONLY,
         pushIn = false, accent = 0xFF06B6D4,
-        structureBrief = "Patient question → concise accurate answer → qualification (individual assessment) + CTA.",
+        structureBrief = "Real patient Q&A: Shot 1: ask the blunt clinic question verbatim (sessions, pain, downtime, darker-skin safety). Shot 2 (B-roll VO): direct transparent answer plus the medical reason why. Shot 3: honest qualification on individual factors, when to delay + CTA.",
     )
 
     val PROBLEM_APPROACH = ReelTemplate(
@@ -196,7 +196,7 @@ object BuiltInTemplates {
         captionPresetId = CaptionPresetId.PREMIUM_MINIMAL, musicPresetId = "cinematic_warm", transitionPresetId = "soft_blur", brandingPresetId = "signature",
         colorLook = ColorLook.CINEMATIC, colorIntensity = 0.5f, talkingBeauty = BeautyPreset.NATURAL, sfxStrategy = SfxStrategy.INTRO_ONLY,
         vignette = 0.3f, accent = 0xFF9D174D,
-        structureBrief = "Relatable concern → assessment-based approach with the treatment → realistic expectations + CTA.",
+        structureBrief = "Diagnostic concern → structured clinical approach: Shot 1: name the specific frustrating presentation and why quick fixes miss. Shot 2: explain how proper assessment guides this modality (or when another option fits better). Shot 3: realistic progressive timeline, daily prevention + CTA.",
     )
 
     val all: List<ReelTemplate> = listOf(EXPERT_EXPLAINS, MYTH_BUSTER, TREATMENT_SHOWCASE, THREE_THINGS, PATIENT_QUESTION, PROBLEM_APPROACH)

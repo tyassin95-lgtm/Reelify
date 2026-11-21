@@ -10,6 +10,7 @@ import app.reelify.core.media.MediaProbe
 import app.reelify.core.media.Thumbnails
 import app.reelify.core.media.engine.CompositionFactory
 import app.reelify.core.media.engine.FaceAnalyzer
+import app.reelify.core.media.engine.PreviewProxyManager
 import app.reelify.core.media.engine.ReelFonts
 import app.reelify.core.media.engine.RenderPreparer
 import app.reelify.core.media.engine.TransformerRunner
@@ -67,6 +68,7 @@ class AppContainer(context: Context) {
     val preparer = RenderPreparer(appContext, projects, settings, storage, probe, audioAnalyzer)
     val compositionFactory = CompositionFactory(appContext, fonts)
     val transformerRunner = TransformerRunner(appContext)
+    val previewProxy = PreviewProxyManager(appContext, storage, compositionFactory, transformerRunner)
     val autoEditor = AutoEditor(projects, library, settings, storage, preparer, compositionFactory, transformerRunner, faceAnalyzer, deepgram, director, credentials)
     val importer = app.reelify.core.media.MediaImporter(projects, storage, probe, thumbnails, audioAnalyzer)
     val exportManager = ExportManager(appContext, projects, settings, storage, preparer, compositionFactory, transformerRunner)

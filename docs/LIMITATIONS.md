@@ -3,6 +3,14 @@
 This document lists what is **not** done, what is approximated, and what could not be verified in
 the build environment. Nothing here is hidden behind a non-functional button in the app.
 
+## Reelify 2.1 — verification status & honest limits
+
+* **No physical Android phone, connected ADB device, or KVM emulator AVD was available here (`adb devices` empty, `android-cli emulator list` empty).** Consequently:
+  * Real-device `TrimScreen` playback (`TrimPlayerController` GPU effect vs fallback), real hardware `TransformerRunner` preview-proxy rendering (`PreviewProxyManager`), hardware `CameraX` recording sync with `TeleprompterPanel`, and UI visual layout on device screens remain unverified on hardware until tested on a physical phone.
+  * Robolectric unit suites verified `CompositionFactory` non-`TIME_UNSET` item durations, `TrimBounds` invariants, `PreviewProxyManager` fingerprinting, `TemplateFrameGeometry` clipping bounds, `TeleprompterPacer`, `LibraryRepository` upgrade preservation, and `MockWebServer` AI flows offline.
+* **No live OpenAI / Deepgram API credentials were present in the build environment**: `CreativeEvalHarness.runLiveEvaluation` was skipped (`REELIFY_OPENAI_API_KEY` unset); AI prompt improvements and Iraqi Arabic script naturalness on live GPT responses must be spot-checked in-app with real API keys and native Iraqi clinical review.
+* **Cleopatra treatment ambiguity**: `https://cleopatra-lasercenter.com/diamond-glow/` documents DiamondGlow® at Cleopatra Laser Center, which cannot be assumed automatically for every local service named "Cleopatra". Reelify 2.1 keeps `cleopatra` unconfirmed until the user taps `"Confirm Cleopatra = DiamondGlow® (3-in-1)"` in Stage 2 or Studio.
+
 ## Reelify 2.0 — what could not be verified here
 
 * **Camera & beauty on real hardware: not verified.** No physical phone was available. The new

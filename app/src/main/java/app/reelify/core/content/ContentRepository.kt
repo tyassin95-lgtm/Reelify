@@ -29,6 +29,23 @@ class ContentRepository(private val dao: ContentDao, private val clock: Clock = 
     /** Resets a built-in example to its original, unreviewed text, or deletes an owner-added one. */
     suspend fun resetExample(id: String) = dao.deleteStyleExample(id)
 
+    /** Saves an owner-edited shot line as a learned clinic voice example for future generations. */
+    suspend fun saveOwnerVoiceSample(text: String, note: String = "") {
+        val clean = text.trim().take(240)
+        if (clean.isBlank()) return
+        val id = "voice_${clean.hashCode().toUInt()}"
+        saveExample(
+            StyleExample(
+                id = id,
+                category = "owner_voice",
+                better = clean,
+                note = note.ifBlank { "Saved from edited script — match this cadence & phrasing" },
+                status = ExampleStatus.CORRECTED,
+                builtIn = false,
+            ),
+        )
+    }
+
     suspend fun recordTopicUse(treatmentId: String, templateId: String, topicKey: String, hook: String) =
         dao.insertTopicUse(TopicHistoryEntity(treatmentId = treatmentId, templateId = templateId, topicKey = topicKey, hook = hook.take(300), usedAt = clock.now()))
 

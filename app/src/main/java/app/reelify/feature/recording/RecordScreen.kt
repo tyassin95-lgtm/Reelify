@@ -267,6 +267,11 @@ private fun CameraRecorder(b: ProjectBundle, section: ReelSection, withAudio: Bo
     val roll = rememberRollDegrees()
     val recording = rec is RecState.Recording
     val elapsed = (rec as? RecState.Recording)?.elapsedMs ?: 0L
+    val timingEstimator by c.timingState.collectAsStateWithLifecycle()
+    val estimatedSpeechMs = remember(section.spokenScript, b.project.language, timingEstimator) {
+        timingEstimator.estimatedDurationMs(section.spokenScript, b.project.language)
+    }
+    var prompterResetNonce by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(front, cd.resolution, cd.fps60) { controller.bind(owner, previewView.surfaceProvider, front, cd.resolution == CaptureResolution.UHD, cd.fps60) }
     LaunchedEffect(cd.beauty) { controller.beautyProcessor.params = LookMath.params(cd.beauty, app.reelify.core.model.ColorGrade(look = app.reelify.core.model.ColorLook.NONE), allowBeauty = !clinical) }
@@ -281,6 +286,8 @@ private fun CameraRecorder(b: ProjectBundle, section: ReelSection, withAudio: Bo
     }
 
     fun startWithCountdown() {
+        prompterResetNonce++
+        prompterRunning = false
         scope.launch {
             for (i in cd.countdownSec downTo 1) { countdown = i; delay(1000) }
             countdown = 0
@@ -347,8 +354,21 @@ private fun CameraRecorder(b: ProjectBundle, section: ReelSection, withAudio: Bo
                 }
             },
             prompter = if (showPrompter && section.spokenScript.isNotBlank()) { h ->
-                TeleprompterPanel(section.spokenScript, cd.teleprompterSize, cd.teleprompterSpeed, cd.teleprompterOpacity, cd.teleprompterMirror,
-                    prompterRunning, { prompterRunning = !prompterRunning }, h)
+                TeleprompterPanel(
+                    text = section.spokenScript,
+                    sizeSp = cd.teleprompterSize,
+                    speed = cd.teleprompterSpeed,
+                    opacity = cd.teleprompterOpacity,
+                    mirror = cd.teleprompterMirror,
+                    running = prompterRunning,
+                    onToggle = { prompterRunning = !prompterRunning },
+                    height = h,
+                    targetDurationMs = target,
+                    estimatedSpeechMs = estimatedSpeechMs,
+                    mode = cd.teleprompterMode,
+                    elapsedRecordingMs = if (recording) elapsed else null,
+                    resetKey = prompterResetNonce to section.id,
+                )
             } else null,
             chips = {
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -447,10 +467,25 @@ private fun CameraRecorder(b: ProjectBundle, section: ReelSection, withAudio: Bo
                     Chip(tr("Lower", "تحت"), prompterPos == TeleprompterPosition.LOWER, { prompterPos = TeleprompterPosition.LOWER })
                 }
                 LabeledSlider(tr("Text size", "حجم الخط"), cd.teleprompterSize, { v -> cam = cd.copy(teleprompterSize = v) }, range = 16f..40f, valueText = "${cd.teleprompterSize.toInt()}")
-                LabeledSlider(tr("Scroll speed", "سرعة التمرير"), cd.teleprompterSpeed, { v -> cam = cd.copy(teleprompterSpeed = v) }, range = 0.3f..2.5f, valueText = "%.1f×".format(cd.teleprompterSpeed))
+                Eyebrow(tr("Pacing mode", "نمط التمرير"))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    app.reelify.core.model.TeleprompterMode.entries.forEach { m ->
+                        Chip(m.label.text(), cd.teleprompterMode == m, { cam = cd.copy(teleprompterMode = m) })
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(
+                        0.85f to tr("Slower", "أبطأ"),
+                        1.0f to tr("Normal", "طبيعي"),
+                        1.15f to tr("Faster", "أسرع"),
+                    ).forEach { (preset, lbl) ->
+                        Chip("$lbl (${preset}×)", kotlin.math.abs(cd.teleprompterSpeed - preset) < 0.04f, { cam = cd.copy(teleprompterSpeed = preset) })
+                    }
+                }
+                LabeledSlider(tr("Fine scroll pace", "ضبط السرعة الدقيق"), cd.teleprompterSpeed, { v -> cam = cd.copy(teleprompterSpeed = v) }, range = 0.5f..1.8f, valueText = "%.2f×".format(cd.teleprompterSpeed))
                 LabeledSlider(tr("Background", "الخلفية"), cd.teleprompterOpacity, { v -> cam = cd.copy(teleprompterOpacity = v) })
                 ToggleRow(tr("Mirror text (beam-splitter rigs)", "عكس النص (لأجهزة التلقين)"), cd.teleprompterMirror, { v -> cam = cd.copy(teleprompterMirror = v) })
-                Text(tr("Tap the teleprompter to pause or resume. Drag to scroll manually. It starts with the recording.", "اضغط على النص حتى يوكف أو يكمل. اسحب للتمرير يدوياً. يبدي ويه التسجيل."), style = MaterialTheme.typography.bodySmall)
+                Text(tr("Short scripts stay stationary without scrolling away. Longer scripts pace automatically to match your shot duration.", "النص القصير يثبت بدون ما يطير، والنص الطويل يتماشى أوتوماتيكياً ويا مدة اللقطة."), style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(12.dp))
             }
         }

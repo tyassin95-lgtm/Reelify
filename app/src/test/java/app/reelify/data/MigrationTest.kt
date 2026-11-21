@@ -7,7 +7,11 @@ import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import app.reelify.core.data.LibraryRepository
 import app.reelify.core.data.ProjectRepository
+import app.reelify.core.data.TreatmentSeed
+import app.reelify.core.database.TreatmentEntity
+import app.reelify.core.util.AppJson
 import app.reelify.core.database.ReelifyDatabase
 import app.reelify.core.model.CaptionSegment
 import app.reelify.core.model.CaptionSource
@@ -131,6 +135,64 @@ class MigrationTest {
             assertThat(repo.getBundle("p-legacy")!!.sections[1].spokenScript).isEqualTo("older")
         } finally {
             room.close(); ctx.deleteDatabase(dbName)
+        }
+    }
+
+    @Test fun `v2_0 to v2_1 library upgrade enriches CFU and PicoStar while preserving user edits and Cleopatra ambiguity`() {
+        val upgradeDb = "upgrade-21-test.db"
+        ctx.deleteDatabase(upgradeDb)
+        val room = Room.databaseBuilder(ctx, ReelifyDatabase::class.java, upgradeDb).allowMainThreadQueries().build()
+        try {
+            kotlinx.coroutines.runBlocking {
+                val dao = room.libraryDao()
+                // Seed v2.0 baseline row for cfu, user-customized picostar talkingPoints, and unconfirmed cleopatra + custom service
+                val v1Cfu = TreatmentSeed.v1Treatments.getValue("cfu")
+                val v1PicoEdited = TreatmentSeed.v1Treatments.getValue("picostar").copy(
+                    talkingPoints = listOf("My clinic custom PicoStar note"),
+                    userEditedFields = setOf("talkingPoints"),
+                )
+                val v1Cleo = TreatmentSeed.v1Treatments.getValue("cleopatra")
+                val customClinicService = TreatmentSeed.v1Treatments.getValue("aerolase").copy(
+                    id = "custom_hydrafacial",
+                    name = "Signature Glow",
+                    builtIn = false,
+                )
+                dao.insertTreatmentsIfAbsent(
+                    listOf(v1Cfu, v1PicoEdited, v1Cleo, customClinicService).map {
+                        TreatmentEntity(it.id, it.name, it.sortOrder, it.builtIn, AppJson.encodeToString(app.reelify.core.model.Treatment.serializer(), it))
+                    },
+                )
+
+                val lib = LibraryRepository(dao)
+                lib.seedIfNeeded()
+
+                val upgradedCfu = lib.getTreatment("cfu")!!
+                assertThat(upgradedCfu.needsConfiguration).isFalse()
+                assertThat(upgradedCfu.seedVersion).isEqualTo(TreatmentSeed.CURRENT_SEED_VERSION)
+                assertThat(upgradedCfu.technologyType).contains("HIFU")
+
+                val upgradedPico = lib.getTreatment("picostar")!!
+                assertThat(upgradedPico.needsConfiguration).isFalse()
+                assertThat(upgradedPico.talkingPoints).containsExactly("My clinic custom PicoStar note")
+                assertThat(upgradedPico.manufacturer).contains("Asclepion")
+
+                val untouchedCustom = lib.getTreatment("custom_hydrafacial")!!
+                assertThat(untouchedCustom.name).isEqualTo("Signature Glow")
+                assertThat(untouchedCustom.builtIn).isFalse()
+
+                val cleo = lib.getTreatment("cleopatra")!!
+                assertThat(cleo.needsConfiguration).isTrue()
+                assertThat(cleo.identityConfirmed).isFalse()
+                assertThat(lib.getTreatment("diamond_glow")?.identityConfirmed).isTrue()
+
+                val confirmed = lib.confirmCleopatraAsDiamondGlow()!!
+                assertThat(confirmed.identityConfirmed).isTrue()
+                assertThat(confirmed.needsConfiguration).isFalse()
+                assertThat(confirmed.linkedReferenceProfileId).isEqualTo("diamond_glow")
+            }
+        } finally {
+            room.close()
+            ctx.deleteDatabase(upgradeDb)
         }
     }
 }

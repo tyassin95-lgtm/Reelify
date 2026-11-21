@@ -4,18 +4,301 @@ import app.reelify.core.model.TerminologyEntry
 import app.reelify.core.model.Treatment
 
 /**
- * Initial treatment library. Facts are deliberately conservative. Where the exact device or
- * protocol behind a name is ambiguous (CFU, Cleopatra) the profile is marked
- * [Treatment.needsConfiguration] and the AI is instructed not to invent capabilities.
- * The clinic owner should review and edit every profile in Studio → Treatments.
+ * Shipped treatment library (v2.1).
+ *
+ * - CFU Èlife and PicoStar are now verified and fully configured from official manufacturer docs.
+ * - Cleopatra intentionally remains [Treatment.needsConfiguration] = true until the clinic owner
+ *   confirms whether it maps to the referenced DiamondGlow® protocol or a custom clinic protocol.
+ * - [v1Treatments] preserves exact Reelify 2.0 seed definitions so existing installations can
+ *   upgrade unchanged built-in fields non-destructively without overwriting clinic customizations.
  */
 object TreatmentSeed {
+    const val CURRENT_SEED_VERSION = 2
+
     private val universalForbidden = listOf(
         "guaranteed results", "permanent results", "100% effective", "no risk", "no side effects",
         "suitable for everyone", "instant results", "painless for everyone", "cure",
     )
 
     val treatments: List<Treatment> = listOf(
+        Treatment(
+            id = "aerolase",
+            name = "Aerolase",
+            arabicName = "إيروليز",
+            sortOrder = 0,
+            accentColor = 0xFFE11D48,
+            manufacturer = "Aerolase",
+            deviceModel = "Neo Elite®",
+            technologyType = "1064 nm Nd:YAG (650-microsecond pulse)",
+            alternativeNames = listOf("Aerolase Neo", "Aerolase Neo Elite", "650-microsecond laser"),
+            description = "A contactless 1064 nm Nd:YAG laser platform using a 650-microsecond pulse duration shorter than the thermal relaxation time of small skin targets, minimizing epidermal overheating across skin types when properly assessed.",
+            approvedIndications = listOf(
+                "May be considered for inflammatory acne concerns (reduces sebaceous activity and inflammation; assessment required)",
+                "May be considered for diffuse redness, rosacea, and vascular marks (hemoglobin absorption)",
+                "May be considered for post-inflammatory erythema/hyperpigmentation and selected melasma maintenance (assessment required)",
+            ),
+            talkingPoints = listOf(
+                "650-microsecond pulse delivers energy efficiently before heat spreads to surrounding skin",
+                "Targets three chromophores: hemoglobin (redness), melanin (pigment), and water/sebaceous structures (acne/collagen)",
+                "Contactless delivery without cooling gel helps keep sessions clean over active acne",
+                "Number of sessions depends on whether the goal is active acne, redness, or pigment maintenance",
+            ),
+            precautions = listOf(
+                "Check recent sun exposure, photosensitizing medications, and isotretinoin history before treatment",
+                "Melasma and darker skin types require strict sun protection and conservative assessment",
+            ),
+            preferredTerminology = listOf("Aerolase", "Aerolase Neo", "إيروليز"),
+            preferredHooks = listOf("Why aren't active acne and acne marks treated the same way?", "What does a 650-microsecond laser pulse actually change?"),
+            commonQuestions = listOf("How many sessions will I need?", "Does it hurt?", "Is there downtime?", "Is laser treatment the same for active acne vs acne marks?"),
+            forbiddenClaims = universalForbidden,
+            brollSuggestions = listOf("Contactless handpiece gliding above skin", "Protective eyewear prep", "Consultation conversation"),
+            ctaStyle = "Invite viewers to book a skin evaluation",
+            referenceNotes = "Source: https://aerolase.com/neo-elite/",
+            seedVersion = CURRENT_SEED_VERSION,
+        ),
+        Treatment(
+            id = "picostar",
+            name = "PicoStar",
+            arabicName = "بيكوستار",
+            sortOrder = 1,
+            accentColor = 0xFF8B5CF6,
+            manufacturer = "Asclepion Laser Technologies",
+            deviceModel = "PicoStar®",
+            technologyType = "Dual-wavelength 1064 nm / 532 nm Picosecond Nd:YAG (<300–400 ps)",
+            alternativeNames = listOf("Picostar", "Asclepion PicoStar", "Pico laser", "Picosecond laser"),
+            description = "Asclepion PicoStar® is a dual-wavelength (1064 nm & 532 nm) picosecond Nd:YAG laser delivering ultra-short pulses under 300–400 picoseconds for high peak-power photoacoustic pigment shattering with minimal thermal spread.",
+            approvedIndications = listOf(
+                "Multi-color amateur and professional tattoo removal (1064 nm for dark inks; 532 nm for red, orange, yellow inks)",
+                "Permanent makeup (PMU) fading or removal (with test-spot caution for cosmetic pigments)",
+                "Selected benign pigmented lesions (sun spots, lentigines, selected melasma protocols after clinical diagnosis)",
+                "Fractional skin remodeling and acne scar improvement using the MicroSpot PICO handpiece",
+            ),
+            talkingPoints = listOf(
+                "Sub-300–400 picosecond pulses shatter ink and pigment via a photoacoustic shockwave rather than prolonged heat",
+                "1064 nm penetrates deeper for dark inks and dermal pigment; 532 nm targets superficial pigment and warm tattoo colors",
+                "Zoom ST, Flat-Top (uniform beam up to 16 mm), and MicroSpot PICO fractional handpieces match specific targets",
+                "Your immune and lymphatic system clears shattered pigment gradually over weeks between spaced sessions",
+            ),
+            precautions = listOf(
+                "532 nm is strongly absorbed by melanin and requires strict caution in darker skin tones and recent sun tans",
+                "Cosmetic/PMU inks containing titanium dioxide can darken paradoxically; perform a test spot",
+                "Never laser undiagnosed or suspicious pigmented lesions without physician evaluation",
+            ),
+            preferredTerminology = listOf("PicoStar", "بيكوستار"),
+            preferredHooks = listOf("Why do different tattoo ink colors need different laser wavelengths?", "What does a picosecond pulse actually change?"),
+            commonQuestions = listOf("Why does tattoo removal take multiple sessions?", "What do 1064 nm and 532 nm mean?", "Why wait weeks between tattoo sessions?"),
+            forbiddenClaims = universalForbidden,
+            brollSuggestions = listOf("Zoom ST or Flat-Top handpiece close-up", "Device parameter screen", "MicroSpot fractional lens view"),
+            ctaStyle = "Book an assessment to evaluate pigment depth and ink colors",
+            referenceNotes = "Source: https://asclepionuk.com/medical-aesthetic-devices/picostar-pico-laser-system/",
+            needsConfiguration = false,
+            seedVersion = CURRENT_SEED_VERSION,
+        ),
+        Treatment(
+            id = "dermablate",
+            name = "Dermablate",
+            arabicName = "ديرمابليت",
+            sortOrder = 2,
+            accentColor = 0xFFF59E0B,
+            manufacturer = "Asclepion Laser Technologies",
+            deviceModel = "MCL31 Dermablate®",
+            technologyType = "2940 nm Er:YAG ablative & MicroSpot fractional resurfacing laser",
+            alternativeNames = listOf("Asclepion Dermablate", "Er:YAG laser", "Erbium laser resurfacing"),
+            description = "Asclepion Dermablate® is a 2940 nm Erbium:YAG laser matching peak water absorption in skin for micron-precise ablative and MicroSpot fractional resurfacing.",
+            approvedIndications = listOf(
+                "Fractional skin resurfacing for atrophic acne scars, surgical scars, and uneven texture",
+                "Fine-to-moderate photoaging wrinkles (assessment required)",
+                "Precision ablation of selected benign epidermal/dermal lesions after clinical diagnosis",
+            ),
+            talkingPoints = listOf(
+                "2940 nm matches peak water absorption, vaporizing microscopic skin layers cleanly with minimal surrounding heat",
+                "MicroSpot fractional mode leaves intact healthy skin bridges to speed healing",
+                "Downtime scales directly with treatment depth: 3–5 days for light fractional polish vs 7–10+ days for deeper scar work",
+                "Strict barrier ointment, gentle care, and UV protection after treatment are mandatory",
+            ),
+            precautions = listOf(
+                "Expect visible redness and peeling proportional to resurfacing depth",
+                "Higher post-inflammatory hyperpigmentation risk in medium-to-darker skin tones without conservative settings and sun care",
+                "Contraindicated over active skin infections, recent tan, or undiagnosed lesions",
+            ),
+            preferredTerminology = listOf("Dermablate", "ديرمابليت"),
+            preferredHooks = listOf("Why does resurfacing depth decide your downtime?", "How does Er:YAG resurfacing differ from non-ablative lasers?"),
+            commonQuestions = listOf("How much downtime does Dermablate have?", "Can it treat every type of acne scar?", "Why is aftercare critical?"),
+            forbiddenClaims = universalForbidden,
+            brollSuggestions = listOf("MicroSpot handpiece close-up", "Barrier aftercare flat-lay", "Laser safety eyewear prep"),
+            ctaStyle = "Encourage an assessment to match resurfacing depth and downtime",
+            referenceNotes = "Source: https://asclepion.com/en/product/dermablate/",
+            seedVersion = CURRENT_SEED_VERSION,
+        ),
+        Treatment(
+            id = "cfu",
+            name = "CFU Èlife",
+            arabicName = "سي إف يو",
+            sortOrder = 3,
+            accentColor = 0xFF06B6D4,
+            manufacturer = "Biotec Italia",
+            deviceModel = "CFU Èlife",
+            technologyType = "High-Intensity Focused Ultrasound (HIFU) — NOT a laser",
+            alternativeNames = listOf("CFU", "CFU Elife", "CFU-Elife", "Focused Ultrasound", "HIFU"),
+            description = "Biotec Italia CFU Èlife is a High-Intensity Focused Ultrasound (HIFU) medical-aesthetic system (NOT a laser) with Centerless transducer design, EasyZoom depth selection, EasyFlow rapid delivery, and ACE active water cooling.",
+            approvedIndications = listOf(
+                "Facial skin lifting and tightening using 4 MHz transducer at 1.5 mm, 3.0 mm, and 4.5 mm (SMAS layer) depths (assessment required)",
+                "Localized body contouring using 2 MHz transducer at 6 mm, 9 mm, 11 mm, and 13 mm subcutaneous adipose depths",
+                "Separately described medical application: non-invasive axillary hyperhidrosis therapy targeting sweat glands (clinical diagnosis required)",
+            ),
+            talkingPoints = listOf(
+                "CFU Èlife uses focused ultrasound waves—not laser light—to create thermal micro-coagulation points (47°C–65°C+) beneath intact surface skin",
+                "Centerless emission reduces excessive central heat while ACE water cooling protects the emitter and skin surface",
+                "EasyZoom dynamically selects exact depths (1.5/3.0/4.5 mm face SMAS; 6–13 mm body fat) while EasyFlow speeds pulse delivery",
+                "Collagen remodeling (neocollagenesis) builds gradually over weeks rather than offering surgical-level instant lift",
+            ),
+            precautions = listOf(
+                "Not a laser and does not peel surface skin; unsuitable over open wounds, active infections, or implanted devices",
+                "Facial fat distribution and laxity grade must be evaluated carefully so thin faces are not over-treated",
+                "Never present non-surgical ultrasound lifting as equivalent to a surgical facelift",
+            ),
+            preferredTerminology = listOf("CFU Èlife", "CFU", "سي إف يو"),
+            preferredHooks = listOf("CFU isn't a laser—here's how focused ultrasound actually works", "Why does treatment depth (1.5 mm vs 4.5 mm SMAS) matter?"),
+            commonQuestions = listOf("Is CFU a laser?", "When will I see tightening results?", "What is the difference between face lifting and body contouring depths?"),
+            forbiddenClaims = universalForbidden + listOf("laser treatment", "surgical facelift equivalent"),
+            brollSuggestions = listOf("CFU handpiece and ultrasound gel prep", "Depth selection screen", "Jawline/cheek treatment glide (consenting patient)"),
+            ctaStyle = "Invite viewers to book an assessment for laxity and depth planning",
+            referenceNotes = "Source: https://www.biotecitalia.com/medical/en/cfu-elife/",
+            needsConfiguration = false,
+            seedVersion = CURRENT_SEED_VERSION,
+        ),
+        Treatment(
+            id = "lasemd",
+            name = "LaseMD",
+            arabicName = "ليز إم دي",
+            sortOrder = 4,
+            accentColor = 0xFF10B981,
+            manufacturer = "Lutronic",
+            deviceModel = "LaseMD™ / LaseMD Ultra™",
+            technologyType = "1927 nm non-ablative fractional thulium fiber laser",
+            alternativeNames = listOf("LaseMD Ultra", "1927 nm thulium laser"),
+            description = "Lutronic LaseMD Ultra™ is a 1927 nm non-ablative fractional thulium laser with IntelliTrak™ magnetic roller tracking that creates ~100–200 µm epidermal micro-channels to remodel tone/texture and enhance cosmeceutical ampoule absorption.",
+            approvedIndications = listOf(
+                "Uneven skin tone, sun-induced pigmentation, freckles, and supportive melasma care (assessment required)",
+                "Gentle non-ablative texture smoothing, pore refinement, and early photoaging maintenance",
+                "Laser-assisted cosmeceutical ampoule delivery (Vitamin C, Tranexamic Acid, Resveratrol, Retinol)",
+            ),
+            talkingPoints = listOf(
+                "1927 nm targets superficial water (~100–200 µm) while leaving the protective stratum corneum largely intact",
+                "IntelliTrak magnetic roller tracks motion speed for uniform micro-channel density",
+                "Fresh micro-channels temporarily enhance penetration of preservative-free active ampoules",
+                "Expect mild redness day 1 and a brief 3–5 day fine 'sandpaper' micro-crusting phase as pigment sheds",
+            ),
+            precautions = listOf(
+                "Only sterile clinic-approved serums should contact freshly opened micro-channels",
+                "Sun protection and pausing home retinoids/acids before and after are required",
+            ),
+            preferredTerminology = listOf("LaseMD", "LaseMD Ultra", "ليز إم دي"),
+            preferredHooks = listOf("Why does skin feel like fine sandpaper after LaseMD?", "How do 1927 nm micro-channels help serums absorb deeper?"),
+            commonQuestions = listOf("How does recovery differ by energy intensity?", "How many sessions are usually planned?", "When can I wear makeup?"),
+            forbiddenClaims = universalForbidden,
+            brollSuggestions = listOf("Magnetic roller handpiece gliding evenly", "Ampoule serum application", "Skin prep steps"),
+            ctaStyle = "Book an evaluation to tailor energy level and serum pairing",
+            referenceNotes = "Source: https://www.lutronic.com/us/provider/product/lasemd-ultra/",
+            seedVersion = CURRENT_SEED_VERSION,
+        ),
+        Treatment(
+            id = "cleopatra",
+            name = "Cleopatra",
+            arabicName = "كليوباترا",
+            sortOrder = 5,
+            accentColor = 0xFFD4AF37,
+            technologyType = "Pending clinic confirmation (link provided for DiamondGlow® 3-in-1)",
+            description = "Needs clinic confirmation: the supplied reference describes DiamondGlow® (3-in-1 exfoliation, vacuum extraction, SkinMedica® Pro-Infusion) at Cleopatra Laser Center. Confirm below if your 'Cleopatra' service IS DiamondGlow®, or describe your clinic's exact protocol.",
+            preferredTerminology = listOf("Cleopatra", "كليوباترا"),
+            forbiddenClaims = universalForbidden,
+            referenceNotes = "Reference provided by user: https://cleopatra-lasercenter.com/diamond-glow/ (requires explicit clinic confirmation before assuming identity).",
+            needsConfiguration = true,
+            identityConfirmed = false,
+            seedVersion = CURRENT_SEED_VERSION,
+        ),
+        Treatment(
+            id = "diamond_glow",
+            name = "DiamondGlow",
+            arabicName = "دايموند گلو",
+            sortOrder = 6,
+            accentColor = 0xFFC084FC,
+            manufacturer = "Allergan Aesthetics / SkinMedica",
+            deviceModel = "DiamondGlow®",
+            technologyType = "3-in-1 dermalinfusion (exfoliation, vacuum extraction, serum infusion)",
+            alternativeNames = listOf("DiamondGlow®", "Dermalinfusion"),
+            description = "DiamondGlow® is a non-invasive 3-in-1 dermabrasion facial that simultaneously exfoliates with customized diamond tips, extracts pore debris via vacuum suction, and infuses condition-specific SkinMedica® Pro-Infusion serums.",
+            approvedIndications = listOf(
+                "Simultaneous superficial exfoliation, pore decongestion, and targeted serum hydration",
+                "Supports immediate surface radiance, smoother texture, and optional lymphatic drainage for puffiness",
+            ),
+            talkingPoints = listOf(
+                "Performs three actions simultaneously: recessed diamond-tip exfoliation, high-powered vacuum extraction, and SkinMedica® Pro-Infusion serum delivery",
+                "Infuses serums right when pores are cleared and most receptive at the dermal-epidermal junction",
+                "Tip grit and serum choice are customized per skin zone and sensitivity",
+                "Targets surface tone, hydration, and congestion—not deep structural scars or deep dermal melasma",
+            ),
+            precautions = listOf(
+                "Avoid active pustular acne, cold sores, open wounds, or rosacea flares due to friction and vacuum pressure",
+                "Use gentle moisturizer and sunscreen afterward; pause harsh home exfoliants for a few days",
+            ),
+            preferredTerminology = listOf("DiamondGlow", "دايموند گلو"),
+            preferredHooks = listOf("How DiamondGlow combines exfoliation, extraction, and serum infusion in one pass"),
+            commonQuestions = listOf("How is DiamondGlow different from dry diamond peeling?", "Is there any downtime?", "How often is it done?"),
+            forbiddenClaims = universalForbidden,
+            brollSuggestions = listOf("Diamond tip and serum vial close-up", "Smooth gliding pass with suction", "Post-treatment hydration"),
+            ctaStyle = "Invite viewers to book a skin consultation to match tip grit and serum",
+            referenceNotes = "Source: https://cleopatra-lasercenter.com/diamond-glow/",
+            needsConfiguration = false,
+            seedVersion = CURRENT_SEED_VERSION,
+        ),
+        Treatment(
+            id = "diamond_peeling",
+            name = "Diamond Peeling",
+            arabicName = "التقشير الماسي",
+            sortOrder = 7,
+            accentColor = 0xFF60A5FA,
+            technologyType = "Crystal-free diamond-tip mechanical microdermabrasion + vacuum suction",
+            alternativeNames = listOf("Diamond microdermabrasion", "Diamond peel"),
+            description = "Mechanical microdermabrasion using an abrasive diamond-tipped wand and adjustable vacuum suction confined strictly to the outermost stratum corneum.",
+            approvedIndications = listOf(
+                "Superficial mechanical exfoliation of dead stratum corneum cells for dullness and mild texture",
+                "Surface sebum and blackhead clearance as part of a balanced skincare routine",
+            ),
+            talkingPoints = listOf(
+                "Diamond-coated tips shear away dead surface corneocytes cleanly without loose crystal dust",
+                "Adjustable vacuum suction tents the skin for even contact and clears loosened debris immediately",
+                "Confined to the stratum corneum—cannot erase deep dermal melasma or deep indented acne scars",
+                "Over-exfoliating too often can compromise the skin barrier; spacing matters",
+            ),
+            precautions = listOf(
+                "Contraindicated over active inflamed/pustular acne, rosacea flares, eczema/psoriasis flares, or active cold sores",
+                "Avoid within 6–12 months of systemic oral isotretinoin per clinical assessment",
+                "Excessive suction can cause temporary pinpoint bruising (petechiae) on delicate skin",
+            ),
+            preferredTerminology = listOf("Diamond Peeling", "التقشير الماسي"),
+            preferredHooks = listOf("What does the diamond tip + vacuum suction actually do?", "Why diamond peeling cannot treat deep dermal melasma"),
+            commonQuestions = listOf("Can diamond peeling remove deep scars or melasma?", "How does suction help?", "When should exfoliation be postponed?"),
+            forbiddenClaims = universalForbidden,
+            brollSuggestions = listOf("Diamond tip grit comparison close-up", "Gentle taut-skin gliding pass", "Post-peel barrier moisturizer & SPF"),
+            ctaStyle = "Invite viewers to ask about safe exfoliation frequency for their skin",
+            referenceNotes = "Source: Clinical dermatology microdermabrasion literature (NBK535383)",
+            seedVersion = CURRENT_SEED_VERSION,
+        ),
+        Treatment(
+            id = Treatment.GENERAL_ID,
+            name = "General / Custom",
+            arabicName = "موضوع عام",
+            sortOrder = 99,
+            accentColor = 0xFF71717A,
+            description = "General skin education or a custom topic not tied to a specific device.",
+            forbiddenClaims = universalForbidden,
+            seedVersion = CURRENT_SEED_VERSION,
+        ),
+    )
+
+    /** Exact Reelify 2.0 seed snapshots (v1) used for non-destructive diffing during upgrade. */
+    val v1Treatments: Map<String, Treatment> = listOf(
         Treatment(
             id = "aerolase", name = "Aerolase", arabicName = "إيروليز", sortOrder = 0, accentColor = 0xFFE11D48,
             alternativeNames = listOf("Aerolase Neo", "650-microsecond laser"),
@@ -106,15 +389,16 @@ object TreatmentSeed {
             description = "General skin education or a custom topic not tied to a specific device.",
             forbiddenClaims = universalForbidden,
         ),
-    )
+    ).associateBy { it.id }
 
     val terminology: List<TerminologyEntry> = listOf(
         TerminologyEntry("t-aerolase", "Aerolase", "إيروليز", "AIR-oh-laze", listOf("aero lase", "airolase", "aero laze", "ايرو ليز", "ايروليز", "إيرو ليز")),
-        TerminologyEntry("t-picostar", "Picostar", "بيكوستار", "PEE-ko-star", listOf("pico star", "piko star", "بيكو ستار")),
+        TerminologyEntry("t-picostar", "PicoStar", "بيكوستار", "PEE-ko-star", listOf("pico star", "piko star", "picostar", "بيكو ستار")),
         TerminologyEntry("t-dermablate", "Dermablate", "ديرمابليت", "DER-ma-blate", listOf("derma blate", "derma blade", "ديرما بليت")),
         TerminologyEntry("t-lasemd", "LaseMD", "ليز إم دي", "laze em dee", listOf("laser md", "lase md", "lays md", "ليزر ام دي", "ليز ام دي")),
-        TerminologyEntry("t-cfu", "CFU", "سي إف يو", "see-ef-you", listOf("c f u", "see if you", "سي اف يو")),
+        TerminologyEntry("t-cfu", "CFU Èlife", "سي إف يو", "see-ef-you", listOf("c f u", "see if you", "cfu", "cfu elife", "سي اف يو")),
         TerminologyEntry("t-cleopatra", "Cleopatra", "كليوباترا", "klee-oh-PAT-ra", listOf("cleo patra", "كليو باترا")),
+        TerminologyEntry("t-diamondglow", "DiamondGlow", "دايموند گلو", "DIE-mund glow", listOf("diamond glow", "دايموند غلو", "دايموند جلو")),
         TerminologyEntry("t-diamond", "Diamond Peeling", "التقشير الماسي", "", listOf("diamond peel", "dimond peeling", "دايموند بيلنك")),
     )
 }

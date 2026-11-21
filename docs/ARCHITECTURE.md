@@ -1,5 +1,8 @@
 # Reelify architecture
 
+> **2.1 additions** (details in [`REELIFY_2_1_CRASH_AUDIT.md`](REELIFY_2_1_CRASH_AUDIT.md), [`TREATMENT_KNOWLEDGE_SOURCES.md`](TREATMENT_KNOWLEDGE_SOURCES.md), [`CLINIC_CONTENT_RESEARCH.md`](CLINIC_CONTENT_RESEARCH.md)):
+> `core/media/TrimBounds` (validated non-inverting trim/slider state), `core/media/engine/PreviewProxyManager` (SHA-256 cached proxy MP4 synthesis via `TransformerRunner`), `TrimPlayerController` + hardened `PreviewController` in `feature/common/PreviewPlayer.kt`, clipped `TemplateFrameGeometry` artwork (`core/designsystem/ReelComponents`), `core/content/TreatmentKnowledge` + `TreatmentKnowledgeCatalog` + `FactualBriefBuilder`, `core/content/catalog/*TopicCatalog` (`480` EN/ar-IQ topics), non-destructive versioned seed upgrades in `LibraryRepository`, `ShotType`-aware budgets in `TimingEstimator`, `TeleprompterPacer` in `feature/recording/CameraComponents`, and live voice pace calibration in `SettingsScreens`.
+
 > **2.0 additions** (details in [`REELIFY_V2_DESIGN.md`](REELIFY_V2_DESIGN.md)):
 > `core/template` (ReelTemplate/ShotRecipe models, BuiltInTemplates, ProductionPlanner,
 > TemplateRepository), `core/content` (GeneratedContentNormalizer, IraqiStyleGuide +

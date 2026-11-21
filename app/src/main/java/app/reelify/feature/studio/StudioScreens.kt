@@ -304,7 +304,23 @@ fun TreatmentEditorScreen(id: String, onBack: () -> Unit) {
         }
     }) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (tr.needsConfiguration) InfoBanner("This profile needs your configuration. Until you describe it, the AI stays generic and won't invent mechanisms, indications or results.", color = Rf.Warning, icon = Icons.Rounded.WarningAmber)
+            if (tr.id == "cleopatra" && !tr.identityConfirmed) {
+                InfoBanner(
+                    "Identity confirmation needed: the reference URL (cleopatra-lasercenter.com/diamond-glow/) describes DiamondGlow® 3-in-1 dermabrasion, which does not automatically mean your clinic's 'Cleopatra' service is DiamondGlow®.",
+                    color = Rf.Warning,
+                    icon = Icons.Rounded.WarningAmber,
+                )
+                SecondaryButton("Confirm Cleopatra = DiamondGlow® (3-in-1)", {
+                    scope.launch {
+                        t = c.library.confirmCleopatraAsDiamondGlow()
+                    }
+                })
+            } else if (tr.needsConfiguration) {
+                InfoBanner("This profile needs your configuration. Until you describe it, the AI stays generic and won't invent mechanisms, indications or results.", color = Rf.Warning, icon = Icons.Rounded.WarningAmber)
+            }
+            if (tr.manufacturer.isNotBlank() || tr.deviceModel.isNotBlank()) {
+                InfoBanner("Verified device: ${listOf(tr.manufacturer, tr.deviceModel, tr.technologyType).filter { it.isNotBlank() }.joinToString(" · ")}", color = Rf.Info)
+            }
             app.reelify.core.designsystem.ToggleRow("Needs configuration", tr.needsConfiguration, { v -> t = tr.copy(needsConfiguration = v) }, subtitle = "Turn off once the facts below are accurate for your clinic")
             ReelTextField(tr.name, { v -> t = tr.copy(name = v) }, label = "Display name", singleLine = true)
             ReelTextField(tr.arabicName, { v -> t = tr.copy(arabicName = v) }, label = "Arabic name", singleLine = true)

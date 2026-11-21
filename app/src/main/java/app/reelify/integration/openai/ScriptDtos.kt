@@ -33,7 +33,16 @@ data class ScriptDto(
 )
 
 @Serializable
-data class IdeaDto(val title: String, val angle: String, val hook: String, @SerialName("hook_style") val hookStyle: String)
+data class IdeaDto(
+    val title: String,
+    val angle: String,
+    val hook: String,
+    @SerialName("hook_style") val hookStyle: String,
+    @SerialName("educational_question") val educationalQuestion: String = "",
+    @SerialName("learning_objective") val learningObjective: String = "",
+    @SerialName("supporting_fact_ids") val supportingFactIds: List<String> = emptyList(),
+    @SerialName("template_fit_reason") val templateFitReason: String = "",
+)
 
 @Serializable
 data class IdeasDto(val ideas: List<IdeaDto>)
@@ -80,11 +89,15 @@ object ScriptSchemas {
     )
 
     val ideas: JsonObject = S.obj("ideas" to S.arr(S.obj(
-        "title" to S.str("Topic title in the reel language, max 8 words"),
-        "angle" to S.str("One sentence describing the angle (English)"),
-        "hook" to S.str("Opening line in the reel language"),
+        "title" to S.str("Specific educational topic title in the reel language, max 9 words"),
+        "angle" to S.str("Concrete clinical teaching angle with mechanism, expectation, or safety rule (English)"),
+        "hook" to S.str("Scroll-stopping opening line in the reel language, zero filler"),
         "hook_style" to S.enum(hookStyles),
-    ), "Exactly four distinct ideas"))
+        "educational_question" to S.str("Real patient question or misconception answered by this reel"),
+        "learning_objective" to S.str("One concrete thing viewers learn that goes beyond generic hype"),
+        "supporting_fact_ids" to S.arr(S.str(), "Verified fact IDs from the brief that anchor this concept"),
+        "template_fit_reason" to S.str("Why this idea naturally fits the 3-shot template"),
+    ), "Five distinct, specific, fact-grounded ideas"))
 
     val hooks: JsonObject = S.obj("hooks" to S.arr(hook, "Exactly three hooks with different styles"))
 

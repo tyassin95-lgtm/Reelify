@@ -1,8 +1,11 @@
 package app.reelify.integration.openai
 
+import app.reelify.core.content.FactualBriefBuilder
+import app.reelify.core.content.FactualContentBrief
 import app.reelify.core.content.GeneratedContentNormalizer
 import app.reelify.core.content.StyleExample
 import app.reelify.core.content.TextField
+import app.reelify.core.content.TreatmentKnowledgeCatalog
 import app.reelify.core.model.BrandProfile
 import app.reelify.core.model.HookOption
 import app.reelify.core.model.ReelConcept
@@ -10,6 +13,7 @@ import app.reelify.core.model.ReelDuration
 import app.reelify.core.model.ReelLanguage
 import app.reelify.core.model.ReelSection
 import app.reelify.core.model.ScriptMeta
+import app.reelify.core.model.ShotType
 import app.reelify.core.model.TerminologyEntry
 import app.reelify.core.model.Treatment
 import app.reelify.core.template.MediaRequirement
@@ -37,13 +41,23 @@ data class ScriptContext(
     val recentHooks: List<String> = emptyList(),
     val recentTopics: List<String> = emptyList(),
     val examples: List<StyleExample> = emptyList(),
+    val factualBrief: FactualContentBrief? = null,
 )
 
 data class WrittenScript(val title: String, val meta: ScriptMeta, val scripts: List<SectionScript>)
 
 data class RewriteResult(val scripts: List<SectionScript>, val summary: String, val notes: List<String>)
 
-data class FreshIdea(val title: String, val angle: String, val hook: String, val hookStyle: String)
+data class FreshIdea(
+    val title: String,
+    val angle: String,
+    val hook: String,
+    val hookStyle: String,
+    val educationalQuestion: String = "",
+    val learningObjective: String = "",
+    val supportingFactIds: List<String> = emptyList(),
+    val templateFitReason: String = "",
+)
 
 /**
  * Reelify 2.0 AI scriptwriter. Returns only creative words (hooks, dialogue, headlines). Every
@@ -58,7 +72,9 @@ class ScriptWriter(
     private val json = Json { ignoreUnknownKeys = true }
 
     fun protectedTerms(ctx: ScriptContext): List<String> =
-        (listOfNotNull(ctx.treatment?.name) + ctx.treatment?.preferredTerminology.orEmpty() + ctx.treatment?.alternativeNames.orEmpty() + ctx.terminology.map { it.english })
+        (listOfNotNull(ctx.treatment?.name) + ctx.treatment?.preferredTerminology.orEmpty() + ctx.terminology.map { it.english } + ctx.treatment?.alternativeNames.orEmpty())
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase() }
             .filter { it.isNotBlank() }.distinct()
 
     private fun forbidden(ctx: ScriptContext) = ctx.treatment?.forbiddenClaims.orEmpty() + ctx.concept.excludedClaims
@@ -71,14 +87,34 @@ class ScriptWriter(
     fun contextBlock(ctx: ScriptContext): String = buildString {
         val budget = budget(ctx)
         val sec = ctx.duration.sectionMs / 1000
+        val tEst = timing()
+        val arabic = ctx.language == ReelLanguage.IRAQI_ARABIC
         appendLine("REEL LANGUAGE: ${ctx.language.displayName} (${ctx.language.code}). All spoken lines, hooks and headlines in this language.")
-        appendLine("DURATION: ${ctx.duration.seconds}s = three shots of exactly ${sec}s. Word budget per shot ≈ $budget words (section 1's budget includes the hook, so its body ≈ ${(budget - 7).coerceAtLeast(6)} words).")
+        appendLine("TARGET PLATFORM: ${ctx.concept.platform.label.en}")
+        appendLine("DURATION: ${ctx.duration.seconds}s = three shots of exactly ${sec}s (~${budget}w max; section 1 includes the hook, so write its body to complement the hook cleanly).")
         appendLine()
         appendLine("PRODUCTION TEMPLATE (fixed by the app — write words for it, do not change it): ${ctx.template.name.en}")
         appendLine("Structure: ${ctx.template.structureBrief}")
         ctx.template.shots.sortedBy { it.index }.forEach { s ->
             val media = if (s.requiredMedia == MediaRequirement.VOICEOVER_BROLL) "voiceover over device/treatment footage (viewer does not see the speaker)" else "speaking to camera"
-            appendLine("- Shot ${s.index} · ${s.role.label.en} · $media. Writing brief: ${s.writingBrief}")
+            val shotType = if (s.requiredMedia == MediaRequirement.VOICEOVER_BROLL) ShotType.VOICEOVER_BROLL else ShotType.TALKING_HEAD
+            val sb = tEst.wordBudgetForShot(ctx.language, ctx.duration.sectionMs, s.role.purpose, shotType)
+            appendLine("- Shot ${s.index} · ${s.role.label.en} · $media · target ${sb.promptLabel()}. Writing brief: ${s.writingBrief}")
+        }
+        val brief = ctx.factualBrief ?: ctx.treatment?.let { tr ->
+            FactualBriefBuilder.build(
+                treatment = tr,
+                pack = TreatmentKnowledgeCatalog.packFor(tr.id, tr.linkedReferenceProfileId, tr.needsConfiguration),
+                topic = null,
+                topicTitle = ctx.topicTitle,
+                topicBrief = ctx.topicBrief,
+                userIdea = ctx.userIdea,
+                arabic = arabic,
+            )
+        }
+        if (brief != null) {
+            appendLine()
+            append(brief.toPromptBlock(arabic))
         }
         ctx.treatment?.let { t ->
             appendLine()
@@ -159,10 +195,20 @@ class ScriptWriter(
     suspend fun ideas(ctx: ScriptContext): List<FreshIdea> {
         val terms = protectedTerms(ctx)
         val (dto, _) = call(ctx, ScriptPrompts.TASK_IDEAS, contextBlock(ctx), "fresh_ideas", ScriptSchemas.ideas, IdeasDto.serializer(),
-            prepare = { d -> d.copy(ideas = d.ideas.map { i -> i.copy(title = GeneratedContentNormalizer.clean(i.title, TextField.TITLE, terms), hook = GeneratedContentNormalizer.clean(i.hook, TextField.HOOK, terms), angle = GeneratedContentNormalizer.clean(i.angle, TextField.NOTE)) }) },
+            prepare = { d ->
+                d.copy(ideas = d.ideas.map { i ->
+                    i.copy(
+                        title = GeneratedContentNormalizer.clean(i.title, TextField.TITLE, terms),
+                        hook = GeneratedContentNormalizer.clean(i.hook, TextField.HOOK, terms),
+                        angle = GeneratedContentNormalizer.clean(i.angle, TextField.NOTE),
+                        educationalQuestion = GeneratedContentNormalizer.clean(i.educationalQuestion, TextField.NOTE),
+                        learningObjective = GeneratedContentNormalizer.clean(i.learningObjective, TextField.NOTE),
+                    )
+                })
+            },
             validate = { d ->
                 val errors = buildList {
-                    if (d.ideas.size < 3) add("return four ideas")
+                    if (d.ideas.size < 3) add("return five distinct ideas")
                     d.ideas.forEachIndexed { i, idea ->
                         if (!PlanValidator.languageMatches(idea.hook, ctx.language)) add("idea ${i + 1} hook must be in ${ctx.language.displayName}")
                         if (!PlanValidator.languageMatches(idea.title, ctx.language)) add("idea ${i + 1} title must be in ${ctx.language.displayName}")
@@ -170,8 +216,19 @@ class ScriptWriter(
                     for (i in d.ideas.indices) for (j in i + 1 until d.ideas.size) if (ScriptValidator.similarity(d.ideas[i].hook, d.ideas[j].hook) > 0.6f) add("ideas ${i + 1} and ${j + 1} are too similar")
                 }
                 ScriptCheck(errors, emptyList())
-            }, maxTokens = 2000)
-        return dto.ideas.take(4).map { FreshIdea(it.title, it.angle, it.hook, it.hookStyle) }
+            }, maxTokens = 2800)
+        return dto.ideas.take(5).map {
+            FreshIdea(
+                title = it.title,
+                angle = it.angle,
+                hook = it.hook,
+                hookStyle = it.hookStyle,
+                educationalQuestion = it.educationalQuestion,
+                learningObjective = it.learningObjective,
+                supportingFactIds = it.supportingFactIds,
+                templateFitReason = it.templateFitReason,
+            )
+        }
     }
 
     suspend fun generate(ctx: ScriptContext, topicKey: String? = null, preferredHook: String? = null): WrittenScript {
