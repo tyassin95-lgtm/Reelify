@@ -49,9 +49,13 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.horizontalScroll
+import app.reelify.core.content.TopicUiCategory
 import app.reelify.core.designsystem.BottomActionBar
+import app.reelify.core.designsystem.Chip
 import app.reelify.core.designsystem.ErrorBanner
 import app.reelify.core.designsystem.Eyebrow
+import app.reelify.core.designsystem.GhostButton
 import app.reelify.core.designsystem.InfoBanner
 import app.reelify.core.designsystem.PrimaryButton
 import app.reelify.core.designsystem.ProgressOverlay
@@ -68,6 +72,7 @@ import app.reelify.core.designsystem.TopicSuggestionCard
 import app.reelify.core.designsystem.TreatmentSelectorCard
 import app.reelify.core.model.ReelDuration
 import app.reelify.core.model.ReelLanguage
+import app.reelify.core.model.SocialPlatform
 import app.reelify.core.model.Treatment
 import app.reelify.core.template.ReelTemplate
 import app.reelify.feature.common.LocalArabicUi
@@ -205,24 +210,67 @@ fun MessageScreen(pid: String, onBack: () -> Unit, onScriptReady: () -> Unit, on
                 StageHeading(2, tr("Choose your message", "اختار الفكرة"), sub, stepLabel = stepLabel(2))
 
                 Column(Modifier.padding(horizontal = RfDims.gutter), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Eyebrow(tr("Platform", "المنصة"))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SocialPlatform.entries.forEach { plat ->
+                            Chip(
+                                plat.label.text(),
+                                ui.concept.platform == plat,
+                                { vm.setPlatform(plat) },
+                            )
+                        }
+                    }
                     SurpriseButton(ui.ideasLoading, enabled = ui.generating == null) { vm.surpriseMe() }
                     if (ui.ideasLoading) repeat(3) { Shimmer(Modifier.fillMaxWidth().height(72.dp)) }
                     ui.ideas.forEach { idea ->
-                        TopicSuggestionCard(idea.title, tr("Fresh idea", "فكرة جديدة"), onClick = { vm.useIdea(idea, onScriptReady) }, hook = idea.hook,
+                        TopicSuggestionCard(idea.title, tr("Fresh concept", "فكرة جديدة"), onClick = { vm.useIdea(idea, onScriptReady) }, hook = idea.hook,
                             loading = ui.generatingKey == "ai:" + idea.title.take(40), enabled = ui.generating == null)
                     }
                 }
 
                 Column(Modifier.padding(horizontal = RfDims.gutter), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Eyebrow(tr("Suggested topics", "مواضيع مقترحة"))
-                    if (treatment != null && !treatment.isGeneral && !ui.profileReady) {
+                    if (treatment != null && treatment.id == "cleopatra" && !treatment.identityConfirmed) {
+                        InfoBanner(
+                            tr(
+                                "If 'Cleopatra' in your clinic refers to DiamondGlow® (3-in-1 exfoliation, vacuum extraction & Pro-Infusion serum + lymphatic drainage), confirm it with one tap to unlock all DiamondGlow clinical topics.",
+                                "إذا جلسة كليوباترا في عيادتك هي جهاز DiamondGlow® الثلاثي (تقشير ماسي + سحب + سيروم Pro-Infusion وتصريف لمفاوي)، ثبّتها بنقرة وحدة حتى تنفتح مواضيع الجهاز.",
+                            ),
+                            color = Rf.Info,
+                        )
+                        PrimaryButton(
+                            tr("Confirm Cleopatra = DiamondGlow® (3-in-1)", "تثبيت كليوباترا = DiamondGlow®"),
+                            { vm.confirmCleopatraIdentity() },
+                            Modifier.fillMaxWidth(),
+                        )
+                    } else if (treatment != null && !treatment.isGeneral && !ui.profileReady) {
                         InfoBanner(tr("${treatment.name} still needs its profile completed, so only safe general topics are shown.", "ملف ${treatment.arabicName.ifBlank { treatment.name }} يحتاج إكمال، فنعرض مواضيع عامة وآمنة فقط."), color = Rf.Warning)
                         Text(tr("Complete profile", "أكمل الملف"), style = MaterialTheme.typography.labelLarge, color = Rf.RoseSoft, modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable { onEditTreatment(treatment.id) }.padding(8.dp))
                     }
-                    ui.suggestions.forEach { s ->
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        TopicUiCategory.entries.forEach { cat ->
+                            Chip(
+                                cat.label.text(),
+                                ui.selectedCategory == cat,
+                                { vm.selectCategory(cat) },
+                            )
+                        }
+                    }
+                    ui.suggestions.take(ui.visibleCount).forEach { s ->
                         TopicSuggestionCard(s.title, s.idea.category.label.text(), onClick = { vm.useTopic(s, onScriptReady) },
+                            hook = s.hookAngle.takeIf { it.isNotBlank() },
                             usedLabel = if (s.usedRecently) tr("used recently", "مستخدم مؤخراً") else null,
                             loading = ui.generatingKey == s.idea.key, enabled = ui.generating == null)
+                    }
+                    if (ui.suggestions.size > ui.visibleCount) {
+                        GhostButton(
+                            tr("Show more topics (${ui.suggestions.size - ui.visibleCount} remaining)", "عرض مواضيع أكثر (${ui.suggestions.size - ui.visibleCount})"),
+                            { vm.showMoreTopics() },
+                            Modifier.fillMaxWidth(),
+                        )
                     }
                 }
 
@@ -272,8 +320,8 @@ private fun SurpriseButton(loading: Boolean, enabled: Boolean, onClick: () -> Un
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(tr("Surprise me with a fresh idea", "فاجئني بفكرة جديدة"), style = MaterialTheme.typography.titleMedium, color = Color.White)
-            Text(tr("AI proposes four new angles from your approved facts", "الذكاء الاصطناعي يقترح أربع زوايا من معلوماتك المعتمدة"), style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.8f)))
+            Text(tr("Give me fresh ideas", "أعطني أفكار جديدة"), style = MaterialTheme.typography.titleMedium, color = Color.White)
+            Text(tr("AI generates 5 specific clinical concepts grounded in verified facts", "الذكاء الاصطناعي يقترح 5 أفكار طبية دقيقة من المعلومات المعتمدة"), style = MaterialTheme.typography.bodySmall.copy(color = Color.White.copy(alpha = 0.8f)))
         }
     }
 }

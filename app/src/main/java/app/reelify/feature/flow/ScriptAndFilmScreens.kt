@@ -133,6 +133,7 @@ fun ScriptReviewScreen(pid: String, onBack: () -> Unit, onApproved: () -> Unit, 
                 val enabled = ui.busy == null
                 Chip(tr("Try different hook", "جرّب افتتاحية ثانية"), false, { if (enabled) vm.tryDifferentHooks() }, leading = Icons.Rounded.Refresh)
                 Chip(tr("More engaging", "أكثر جذب"), false, { if (enabled) vm.action(ScriptAction.MORE_ENGAGING, unlocked) }, leading = Icons.Rounded.AutoAwesome)
+                Chip(tr("Sound like me", "يشبه أسلوبي"), false, { if (enabled) vm.action(ScriptAction.SOUND_LIKE_ME, unlocked) })
                 if (b.project.language == ReelLanguage.IRAQI_ARABIC) Chip(tr("More natural Iraqi", "عراقي أكثر"), false, { if (enabled) vm.action(ScriptAction.MORE_NATURAL_IRAQI, unlocked) })
                 Chip(tr("Shorten", "اختصر"), false, { if (enabled) vm.action(ScriptAction.SHORTEN, unlocked) })
                 Chip(tr("More professional", "أكثر احترافية"), false, { if (enabled) vm.action(ScriptAction.MORE_PROFESSIONAL, unlocked) })
@@ -143,20 +144,24 @@ fun ScriptReviewScreen(pid: String, onBack: () -> Unit, onApproved: () -> Unit, 
 
             b.sections.sortedBy { it.index }.forEach { s ->
                 val shot = tpl.shot(s.index)
+                val shotType = if (shot.requiredMedia == MediaRequirement.VOICEOVER_BROLL) app.reelify.core.model.ShotType.VOICEOVER_BROLL else app.reelify.core.model.ShotType.TALKING_HEAD
+                val sb = timing.wordBudgetForShot(b.project.language, sectionMs, shot.role.purpose, shotType)
+                val wc = timing.countWords(s.spokenScript)
                 val est = timing.estimate(s.spokenScript, b.project.language, sectionMs, if (shot.requiredMedia == MediaRequirement.VOICEOVER_BROLL) 0.6f else 0f)
                 var revs by remember(s.updatedAt) { mutableIntStateOf(0) }
                 LaunchedEffect(s.updatedAt) { revs = vm.revisionCount(s.id) }
                 var details by rememberSaveable(s.id) { mutableStateOf(false) }
+                val baseTiming = when (est.fit) {
+                    TimingFit.TOO_LONG -> tr("≈ %.0fs — likely too long".format(est.totalMs / 1000f), "≈ %.0f ثا — غالباً أطول من اللازم".format(est.totalMs / 1000f))
+                    TimingFit.TOO_SHORT -> tr("≈ %.0fs — short for ${sectionMs / 1000}s shot".format(est.totalMs / 1000f), "≈ %.0f ثا — قصير على ${sectionMs / 1000} ثا".format(est.totalMs / 1000f))
+                    TimingFit.FITS -> tr("≈ %.0fs spoken".format(est.totalMs / 1000f), "≈ %.0f ثا كلام".format(est.totalMs / 1000f))
+                    TimingFit.EMPTY -> null
+                }
                 ScriptReviewCard(
                     s.index, shot.role.label.text(), sectionMs / 1000, s.spokenScript, shot.instruction.text(), s.onScreenText, s.locked,
                     busy = s.index in ui.busySections,
-                    timingNote = when (est.fit) {
-                        TimingFit.TOO_LONG -> tr("≈ %.0fs — likely too long".format(est.totalMs / 1000f), "≈ %.0f ثا — غالباً أطول من اللازم".format(est.totalMs / 1000f))
-                        TimingFit.TOO_SHORT -> tr("≈ %.0fs — a little short".format(est.totalMs / 1000f), "≈ %.0f ثا — شوية قصير".format(est.totalMs / 1000f))
-                        TimingFit.FITS -> tr("≈ %.0fs spoken".format(est.totalMs / 1000f), "≈ %.0f ثا كلام".format(est.totalMs / 1000f))
-                        TimingFit.EMPTY -> null
-                    },
-                    timingWarn = est.fit == TimingFit.TOO_LONG,
+                    timingNote = baseTiming?.let { "$it · ${wc}/${sb.promptLabel()}" },
+                    timingWarn = est.fit == TimingFit.TOO_LONG || est.fit == TimingFit.TOO_SHORT,
                     onToggleLock = { vm.toggleLock(s) },
                     modifier = Modifier.padding(horizontal = RfDims.gutter),
                 ) {
@@ -207,6 +212,11 @@ fun ScriptReviewScreen(pid: String, onBack: () -> Unit, onApproved: () -> Unit, 
                 ReelTextField(text, { text = it }, label = tr("Spoken words", "الكلام"), minLines = 4)
                 ReelTextField(headline, { headline = it }, label = tr("On-screen headline", "العنوان على الشاشة"), singleLine = true)
                 PrimaryButton(tr("Save", "حفظ"), { vm.saveManual(s, text, headline); editing = null }, Modifier.fillMaxWidth())
+                GhostButton(tr("Save line to my voice guide", "احفظ هذا الأسلوب كمرجع لكلامي"), {
+                    vm.saveManual(s, text, headline)
+                    vm.saveToMyVoice(text)
+                    editing = null
+                }, Modifier.fillMaxWidth())
             }
         }
     }
@@ -266,6 +276,22 @@ fun FilmScreen(
                     done = st.done, current = s.index == current, statusText = status, modifier = Modifier.padding(horizontal = RfDims.gutter),
                     thumbnail = st.footage.firstOrNull()?.let { clip -> { AsyncImage(mediaModel(clip.thumbnailPath ?: clip.uri), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) } },
                 ) {
+                    val primaryClip = st.footage.firstOrNull()
+                    if (primaryClip != null && primaryClip.kind == app.reelify.core.model.MediaKind.VIDEO) {
+                        val effectiveEnd = if (primaryClip.trimEndMs > primaryClip.trimStartMs) primaryClip.trimEndMs else primaryClip.sourceDurationMs
+                        val clipDurMs = (effectiveEnd - primaryClip.trimStartMs).coerceAtLeast(0L)
+                        val targetMs = b.project.duration.sectionMs
+                        if (clipDurMs in 1L..(targetMs - 1500L) && st.broll.isEmpty()) {
+                            val gapSec = ((targetMs - clipDurMs) / 1000L).coerceAtLeast(1L)
+                            InfoBanner(
+                                tr(
+                                    "Clip is ${gapSec}s shorter than ${targetMs / 1000}s shot — Retake, Add cutaway B-roll, or Auto-Edit extends the closing beat cleanly.",
+                                    "المقطع أقصر بـ $gapSec ثا من مدة اللقطة (${targetMs / 1000} ثا) — تكدر تعيد التصوير، تضيف لقطة B-roll، أو المعالجة تكمل الباقي بهدوء.",
+                                ),
+                                color = Rf.Warning,
+                            )
+                        }
+                    }
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (!voiceShot) {
                             PillAction(if (st.footageDone) tr("Retake", "إعادة") else tr("Record", "سجّل"), Icons.Rounded.FiberManualRecord, { onRecord(s.id, "PRIMARY", false, st.footageDone) }, primary = !st.footageDone)

@@ -1,23 +1,44 @@
 package app.reelify.core.content
 
+import app.reelify.core.content.catalog.AerolaseTopicCatalog
+import app.reelify.core.content.catalog.CfuElifeTopicCatalog
+import app.reelify.core.content.catalog.CleopatraTopicCatalog
+import app.reelify.core.content.catalog.DermablateTopicCatalog
+import app.reelify.core.content.catalog.DiamondPeelingTopicCatalog
+import app.reelify.core.content.catalog.LasemdTopicCatalog
+import app.reelify.core.content.catalog.PicostarTopicCatalog
 import app.reelify.core.model.Treatment
 import app.reelify.core.template.LocalizedText
 
-@kotlinx.serialization.Serializable
 enum class TopicCategory(val label: LocalizedText) {
-    ACNE(LocalizedText("Acne", "حب الشباب")), PIGMENTATION(LocalizedText("Pigmentation", "التصبغات")), TEXTURE(LocalizedText("Skin texture", "ملمس البشرة")),
-    SCARS(LocalizedText("Scars", "الآثار والندبات")), SUITABILITY(LocalizedText("Suitability", "لمن يناسب")), PREPARATION(LocalizedText("Preparation", "التحضير")),
-    AFTERCARE(LocalizedText("Aftercare", "العناية بعد الجلسة")), PATIENT_QUESTIONS(LocalizedText("Patient questions", "أسئلة المراجعين")), MYTHS(LocalizedText("Myths", "أفكار غلط")),
-    MISCONCEPTIONS(LocalizedText("Misconceptions", "مفاهيم خاطئة")), EXPECTATIONS(LocalizedText("Expectations", "التوقعات")), COMPARISONS(LocalizedText("Comparisons", "مقارنات")),
-    ADVICE(LocalizedText("Professional advice", "نصيحة مختص")), BEHIND_SCENES(LocalizedText("Behind the scenes", "ورا الكواليس")), DEVICE(LocalizedText("Device introduction", "تعريف بالجهاز")),
+    PREPARATION(LocalizedText("Before your visit", "قبل الجلسة")),
+    MISCONCEPTIONS(LocalizedText("Misconception", "تصحيح مفهوم")),
+    SUITABILITY(LocalizedText("Who it fits", "لمن يناسب")),
+    ADVICE(LocalizedText("Clinical advice", "نصيحة طبية")),
+    DEVICE(LocalizedText("How it works", "شلون يشتغل")),
+    PATIENT_QUESTIONS(LocalizedText("Patient Q&A", "سؤال مراجع")),
+    EXPECTATIONS(LocalizedText("Sessions & timing", "الجلسات والنتائج")),
+    COMPARISONS(LocalizedText("Comparison", "مقارنة")),
+    AFTERCARE(LocalizedText("Aftercare", "بعد الجلسة")),
+    ACNE(LocalizedText("Acne", "حب الشباب")),
+    PIGMENTATION(LocalizedText("Pigmentation", "التصبغات")),
+    SCARS(LocalizedText("Scars", "الندبات")),
+    TEXTURE(LocalizedText("Texture & glow", "الملمس والنضارة")),
+    MYTHS(LocalizedText("Myth buster", "تصحيح خرافة")),
+    BEHIND_SCENES(LocalizedText("Behind the scenes", "داخل العيادة")),
+    ;
+
+    fun toUiCategory(): TopicUiCategory = when (this) {
+        DEVICE, BEHIND_SCENES -> TopicUiCategory.HOW_IT_WORKS
+        PATIENT_QUESTIONS -> TopicUiCategory.PATIENT_QUESTIONS
+        MYTHS, MISCONCEPTIONS -> TopicUiCategory.MYTHS
+        PREPARATION, AFTERCARE -> TopicUiCategory.BEFORE_AFTER_CARE
+        COMPARISONS -> TopicUiCategory.COMPARISONS
+        EXPECTATIONS, SUITABILITY, ADVICE, ACNE, PIGMENTATION, SCARS, TEXTURE ->
+            TopicUiCategory.SESSIONS_EXPECTATIONS
+    }
 }
 
-/**
- * An offline topic structure. [title] may contain `{t}` (treatment name). [brief] tells the
- * scriptwriter what the reel is about — it never contains clinical facts itself; facts come
- * only from the approved treatment profile. Topics with [needsProfileFacts] are hidden for
- * profiles that still need configuration.
- */
 data class TopicIdea(
     val key: String,
     val category: TopicCategory,
@@ -25,89 +46,300 @@ data class TopicIdea(
     val brief: String,
     val templates: Set<String>,
     val needsProfileFacts: Boolean = false,
-    /** Lower-case keywords; when set, the topic is shown only if the profile's indications/talking points mention one. */
     val requiresIndication: List<String> = emptyList(),
+    val hookAngle: LocalizedText = LocalizedText(""),
+    val uiCategory: TopicUiCategory = category.toUiCategory(),
+    val factIds: List<String> = emptyList(),
+    val mostInteresting: Boolean = false,
 ) {
     fun titleFor(t: Treatment?, arabic: Boolean): String {
-        val name = if (t == null || t.isGeneral) (if (arabic) "العلاج" else "treatment") else if (arabic) t.arabicName.ifBlank { t.name } else t.name
-        return title.resolve(arabic).replace("{t}", name)
+        val raw = if (arabic) title.ar.ifBlank { title.en } else title.en.ifBlank { title.ar }
+        val name = t?.let { if (arabic) it.arabicName.ifBlank { it.name } else it.name } ?: "this treatment"
+        return raw.replace("{t}", name)
     }
+
+    fun hookFor(arabic: Boolean): String =
+        if (arabic) hookAngle.ar.ifBlank { hookAngle.en } else hookAngle.en.ifBlank { hookAngle.ar }
 }
 
-data class TopicSuggestion(val idea: TopicIdea, val title: String, val usedRecently: Boolean, val fromProfile: Boolean = false)
+data class TopicSuggestion(
+    val idea: TopicIdea,
+    val title: String,
+    val usedRecently: Boolean,
+    val fromProfile: Boolean = false,
+    val hookAngle: String = "",
+    val uiCategory: TopicUiCategory = idea.uiCategory,
+    val factIds: List<String> = idea.factIds,
+    val mostInteresting: Boolean = idea.mostInteresting,
+)
 
 object TopicLibrary {
-    private const val EE = "expert_explains"; private const val MB = "myth_buster"; private const val TS = "treatment_showcase"
-    private const val TT = "three_things"; private const val PQ = "patient_question"; private const val PA = "problem_approach"
 
+    val treatmentTopics: List<TreatmentTopic> =
+        AerolaseTopicCatalog.topics +
+            PicostarTopicCatalog.topics +
+            CfuElifeTopicCatalog.topics +
+            DermablateTopicCatalog.topics +
+            LasemdTopicCatalog.topics +
+            DiamondPeelingTopicCatalog.topics +
+            CleopatraTopicCatalog.diamondGlowTopics +
+            CleopatraTopicCatalog.cleopatraPendingTopics
+
+    /** Legacy / custom-treatment fallback templates when no treatment-specific catalog matches. */
     val ideas: List<TopicIdea> = listOf(
-        TopicIdea("three_before", TopicCategory.PREPARATION, LocalizedText("Three things to know before {t}", "ثلاث شغلات لازم تعرفها قبل {t}"),
-            "Three practical, non-clinical-claim things to know before booking (assessment, preparation, realistic expectations).", setOf(TT, EE)),
-        TopicIdea("misconception", TopicCategory.MISCONCEPTIONS, LocalizedText("A common misconception about {t}", "فكرة غلط منتشرة عن {t}"),
-            "Correct one common misconception using an approved fact from the profile.", setOf(MB), needsProfileFacts = true),
-        TopicIdea("right_for_everyone", TopicCategory.SUITABILITY, LocalizedText("Is {t} right for everyone?", "{t} يناسب الكل؟"),
-            "Explain honestly that suitability depends on skin type, concern and assessment.", setOf(PQ, EE, MB)),
-        TopicIdea("one_mistake", TopicCategory.ADVICE, LocalizedText("One mistake people make", "أكثر غلطة يسويها الناس"),
-            "One common, relatable mistake people make before or after treatment (e.g. skipping assessment or sun protection).", setOf(EE, MB, PA)),
-        TopicIdea("what_happens", TopicCategory.DEVICE, LocalizedText("What happens during a {t} session?", "شنو يصير بجلسة {t}؟"),
-            "Walk through a session simply and accurately (only steps in the profile; sensation varies).", setOf(TS, EE), needsProfileFacts = true),
-        TopicIdea("top_question", TopicCategory.PATIENT_QUESTIONS, LocalizedText("The question patients ask most", "أكثر سؤال يسألوه المراجعين"),
-            "Answer the most common patient question from the profile honestly, with the important qualification.", setOf(PQ)),
-        TopicIdea("why_assessment", TopicCategory.ADVICE, LocalizedText("Why proper assessment matters", "ليش التقييم قبل العلاج مهم"),
-            "Why a skin assessment comes before choosing any device or protocol.", setOf(EE, PQ, PA)),
-        TopicIdea("what_affects_results", TopicCategory.EXPECTATIONS, LocalizedText("What affects your results?", "شنو يأثر على النتيجة؟"),
-            "General factors that influence results (skin type, consistency, aftercare, sun) without promising outcomes.", setOf(TT, EE)),
-        TopicIdea("vs_alternatives", TopicCategory.COMPARISONS, LocalizedText("{t} vs other options", "{t} مقارنة بخيارات ثانية"),
-            "A fair, non-superlative comparison: which concerns the profile says it may suit vs when another approach may be considered.", setOf(EE, PQ), needsProfileFacts = true),
-        TopicIdea("before_session", TopicCategory.PREPARATION, LocalizedText("Before your session", "قبل جلستك"),
-            "Simple preparation advice (tell the clinic about products/medication, sun exposure) — general, not prescriptive.", setOf(TT, PQ)),
-        TopicIdea("aftercare_skip", TopicCategory.AFTERCARE, LocalizedText("The aftercare step people skip", "خطوة العناية اللي الناس تنساها"),
-            "The aftercare step most often skipped (typically sun protection) and why it matters.", setOf(EE, MB, TT)),
-        TopicIdea("how_many_sessions", TopicCategory.EXPECTATIONS, LocalizedText("How many sessions will I need?", "كم جلسة أحتاج؟"),
-            "Honest answer: it varies per person and concern; explain what influences the number.", setOf(PQ, PA)),
-        TopicIdea("acne_back", TopicCategory.ACNE, LocalizedText("Why acne keeps coming back", "ليش حب الشباب يرجع؟"),
-            "Relatable acne concern and how an assessment-based plan with this treatment may fit.", setOf(PA, EE), requiresIndication = listOf("acne", "حب الشباب")),
-        TopicIdea("pigment_sun", TopicCategory.PIGMENTATION, LocalizedText("Pigmentation and the sun", "التصبغات والشمس"),
-            "Why pigmentation can return without sun protection, and where treatment may fit.", setOf(PA, EE, MB), requiresIndication = listOf("pigment", "تصبغ", "melasma")),
-        TopicIdea("scar_types", TopicCategory.SCARS, LocalizedText("Not all scars are the same", "مو كل الآثار نفس الشي"),
-            "Different scar types need different approaches; assessment decides.", setOf(EE, TT), requiresIndication = listOf("scar", "آثار", "ندب")),
-        TopicIdea("texture_pores", TopicCategory.TEXTURE, LocalizedText("Rough texture and visible pores", "ملمس البشرة والمسامات"),
-            "A relatable texture concern and how the treatment may be part of a plan.", setOf(PA, EE), requiresIndication = listOf("texture", "pore", "ملمس", "مسام", "resurfac")),
-        TopicIdea("myth_thins_skin", TopicCategory.MYTHS, LocalizedText("Myth: lasers thin your skin", "فكرة غلط: الليزر يخفّف البشرة"),
-            "Address the myth carefully using only what the profile supports; if unsupported, say it depends and assessment matters.", setOf(MB), needsProfileFacts = true),
-        TopicIdea("behind_scenes", TopicCategory.BEHIND_SCENES, LocalizedText("Behind the scenes: preparing a session", "ورا الكواليس: شلون نحضّر الجلسة"),
-            "Show how the room and device are prepared (hygiene, settings check) — no outcome claims.", setOf(TS)),
-        TopicIdea("meet_device", TopicCategory.DEVICE, LocalizedText("Meet the {t}", "تعرّفوا على {t}"),
-            "Introduce the device/treatment by name and what the profile says it may be considered for.", setOf(TS), needsProfileFacts = true),
-        TopicIdea("honest_advice", TopicCategory.ADVICE, LocalizedText("My honest advice before any laser", "نصيحتي الصريحة قبل أي ليزر"),
-            "Honest expert advice: assessment first, realistic expectations, aftercare.", setOf(EE, TT, PA)),
+        TopicIdea(
+            "three_before", TopicCategory.PREPARATION,
+            LocalizedText("Three things to know before {t}", "ثلاث شغلات لازم تعرفها قبل {t}"),
+            "Three practical pre-visit checks and medications/sun guidance before starting.",
+            setOf("three_things"), needsProfileFacts = true,
+        ),
+        TopicIdea(
+            "misconception", TopicCategory.MISCONCEPTIONS,
+            LocalizedText("A common misconception about {t}", "فكرة غلط منتشرة عن {t}"),
+            "Contrast a popular myth against realistic clinical expectations and mechanisms.",
+            setOf("myth_buster", "expert_explains"), needsProfileFacts = true,
+        ),
+        TopicIdea(
+            "right_for_everyone", TopicCategory.SUITABILITY,
+            LocalizedText("Is {t} right for everyone?", "هل {t} يناسب الكل؟"),
+            "Explain candidate selection, contraindications, and when another modality fits better.",
+            setOf("expert_explains", "patient_question"), needsProfileFacts = true,
+        ),
+        TopicIdea(
+            "one_mistake", TopicCategory.ADVICE,
+            LocalizedText("One mistake patients make around {t}", "أكثر غلطة تصير ويا {t}"),
+            "Share a real clinical aftercare or expectation slip patients avoid after proper advice.",
+            setOf("expert_explains", "myth_buster"),
+        ),
+        TopicIdea(
+            "what_happens", TopicCategory.DEVICE,
+            LocalizedText("What actually happens inside a {t} session", "شنو يصير خطوة بخطوة بجلسة {t}؟"),
+            "Walk calmly through prep, sensation during passes, and immediate post-session appearance.",
+            setOf("treatment_showcase", "expert_explains"), needsProfileFacts = true,
+        ),
+        TopicIdea(
+            "top_question", TopicCategory.PATIENT_QUESTIONS,
+            LocalizedText("The question patients ask most about {t}", "أكثر سؤال ينسأل بالعيادة عن {t}"),
+            "Answer the top real clinical question transparently with session planning caveats.",
+            setOf("patient_question"), needsProfileFacts = true,
+        ),
+        TopicIdea(
+            "why_assessment", TopicCategory.ADVICE,
+            LocalizedText("Why proper skin assessment comes before {t}", "ليش التقييم الطبي قبل {t} يغير النتيجة؟"),
+            "Show why evaluating skin tone, trigger factors, and lesion depth prevents mismatched sessions.",
+            setOf("expert_explains", "problem_approach"),
+        ),
+        TopicIdea(
+            "what_affects_results", TopicCategory.EXPECTATIONS,
+            LocalizedText("What affects your {t} results?", "شنو العوامل اللي تحدد نتيجة {t}؟"),
+            "Break down biological timing, session spacing, and daily UV/aftercare compliance.",
+            setOf("expert_explains", "three_things"), needsProfileFacts = true,
+        ),
+        TopicIdea(
+            "vs_alternatives", TopicCategory.COMPARISONS,
+            LocalizedText("{t} vs other clinic options", "شلون يفرق {t} عن الخيارات الثانية؟"),
+            "Explain mechanism differences objectively so patients understand why one option fits better.",
+            setOf("expert_explains", "three_things"), needsProfileFacts = true,
+        ),
+        TopicIdea(
+            "aftercare_skip", TopicCategory.AFTERCARE,
+            LocalizedText("The aftercare habit that protects your {t} result", "خطوة العناية اللي تحمي نتيجة {t}"),
+            "Give clear, practical home protection and sun/barrier instructions after treatment.",
+            setOf("three_things", "patient_question"),
+        ),
+        TopicIdea(
+            "acne_back", TopicCategory.ACNE,
+            LocalizedText("Why recurring breakouts need calm treatment planning", "ليش حب الشباب المتكرر يحتاج خطة هادئة مو تقشير عشوائي؟"),
+            "Address root inflammation/sebum triggers alongside realistic maintenance.",
+            setOf("problem_approach", "expert_explains"), requiresIndication = listOf("acne"),
+        ),
+        TopicIdea(
+            "pigment_sun", TopicCategory.PIGMENTATION,
+            LocalizedText("Pigmentation, sun exposure, and choosing {t}", "التصبغات والشمس ودور {t}"),
+            "Explain depth-matching and daily UV prevention around pigment sessions.",
+            setOf("problem_approach", "patient_question"), requiresIndication = listOf("pigment", "melasma", "spot"),
+        ),
+        TopicIdea(
+            "scar_types", TopicCategory.SCARS,
+            LocalizedText("Not all scars need the same depth of treatment", "مو كل الندب تتعالج بنفس العمق"),
+            "Differentiate red flat marks from tethered or boxcar scars transparently.",
+            setOf("problem_approach", "expert_explains"), requiresIndication = listOf("scar"),
+        ),
+        TopicIdea(
+            "texture_pores", TopicCategory.TEXTURE,
+            LocalizedText("Rough texture and pores: matching realistic steps", "الملمس الخشن والمسام: التوقعات الصح"),
+            "Explain collagen/surface renewal timelines without exaggerated airbrushed promises.",
+            setOf("problem_approach", "three_things"), requiresIndication = listOf("texture", "pore"),
+        ),
     )
+
+    fun profileReady(t: Treatment?): Boolean {
+        if (t == null) return false
+        val pack = TreatmentKnowledgeCatalog.packFor(
+            treatmentId = t.id,
+            linkedReferenceId = t.linkedReferenceProfileId,
+            needsConfiguration = t.needsConfiguration,
+        )
+        if (pack != null && pack.verificationStatus != VerificationStatus.CLINIC_PROTOCOL_REQUIRED) {
+            return true
+        }
+        return !t.needsConfiguration && t.description.isNotBlank() && t.approvedIndications.isNotEmpty()
+    }
+
+    /** Returns treatment-specific topics filtered by template and optional category. */
+    fun topicsFor(
+        treatment: Treatment?,
+        templateId: String? = null,
+        uiCategory: TopicUiCategory = TopicUiCategory.ALL,
+    ): List<TreatmentTopic> {
+        val effectiveId = resolveCatalogId(treatment) ?: return emptyList()
+        val byTreatment = treatmentTopics.filter { topic ->
+            topic.treatmentId == effectiveId &&
+                (!topic.requiresConfirmedIdentity || treatment?.identityConfirmed == true || effectiveId == "diamond_glow")
+        }
+        val byTemplate = if (templateId.isNullOrBlank()) {
+            byTreatment
+        } else {
+            byTreatment.filter { it.templateId == templateId }
+        }
+        return when (uiCategory) {
+            TopicUiCategory.ALL -> byTemplate
+            TopicUiCategory.MOST_INTERESTING -> byTemplate.filter { it.mostInteresting }.ifEmpty { byTemplate }
+            else -> byTemplate.filter { it.uiCategory == uiCategory }.ifEmpty { byTemplate }
+        }
+    }
+
+    fun resolveCatalogId(treatment: Treatment?): String? {
+        if (treatment == null) return null
+        if (treatment.id == "cleopatra") {
+            return if (treatment.identityConfirmed || treatment.linkedReferenceProfileId == "diamond_glow") {
+                "diamond_glow"
+            } else {
+                "cleopatra"
+            }
+        }
+        val linked = treatment.linkedReferenceProfileId
+        if (!linked.isNullOrBlank() && treatmentTopics.any { it.treatmentId == linked }) {
+            return linked
+        }
+        if (treatmentTopics.any { it.treatmentId == treatment.id }) {
+            return treatment.id
+        }
+        return null
+    }
 
     private fun matchesIndication(idea: TopicIdea, t: Treatment?): Boolean {
         if (idea.requiresIndication.isEmpty()) return true
-        if (t == null || t.isGeneral) return false
-        val hay = (t.approvedIndications + t.talkingPoints + t.description).joinToString(" ").lowercase()
-        return idea.requiresIndication.any { hay.contains(it.lowercase()) }
+        if (t == null) return false
+        val bag = (t.approvedIndications + t.description + t.name + t.arabicName).joinToString(" ").lowercase()
+        return idea.requiresIndication.any { it in bag }
     }
 
-    /** Whether a treatment profile has enough approved facts for fact-dependent topics. */
-    fun profileReady(t: Treatment?): Boolean = t != null && !t.isGeneral && !t.needsConfiguration && (t.approvedIndications.isNotEmpty() || t.talkingPoints.isNotEmpty())
+    fun suggestions(
+        treatment: Treatment?,
+        templateId: String?,
+        recentKeys: List<String>,
+        arabic: Boolean,
+        limit: Int = 60,
+        uiCategory: TopicUiCategory = TopicUiCategory.ALL,
+    ): List<TopicSuggestion> {
+        val recent = recentKeys.toSet()
+        val specific = topicsFor(treatment, templateId, uiCategory)
 
-    /**
-     * Topic suggestions for a treatment + template, safest first. Topics used recently for this
-     * treatment drop to the end (variety), template matches rise. Deterministic for equal input.
-     */
-    fun suggestions(treatment: Treatment?, templateId: String?, recentKeys: List<String>, arabic: Boolean, limit: Int = 10): List<TopicSuggestion> {
-        val ready = profileReady(treatment)
-        val recent = recentKeys.take(8).toSet()
-        val fromLib = ideas.filter { (!it.needsProfileFacts || ready) && matchesIndication(it, treatment) }
-            .map { TopicSuggestion(it, it.titleFor(treatment, arabic), it.key in recent) }
-        val fromProfile = if (ready) treatment!!.commonQuestions.take(3).mapIndexed { i, q ->
-            val idea = TopicIdea("profile_q_$i", TopicCategory.PATIENT_QUESTIONS, LocalizedText(q), "Answer this patient question from the profile: $q", setOf("patient_question"), needsProfileFacts = true)
-            TopicSuggestion(idea, q, idea.key in recent, fromProfile = true)
-        } else emptyList()
-        return (fromLib + fromProfile)
-            .sortedWith(compareBy<TopicSuggestion>({ it.usedRecently }, { templateId != null && templateId !in it.idea.templates }, { !it.fromProfile }))
+        if (specific.isNotEmpty()) {
+            val mapped = specific.map { topic ->
+                val idea = TopicIdea(
+                    key = topic.key,
+                    category = topic.category,
+                    title = topic.title,
+                    brief = topic.brief,
+                    templates = setOf(topic.templateId),
+                    needsProfileFacts = topic.factIds.isNotEmpty(),
+                    hookAngle = topic.hookAngle,
+                    uiCategory = topic.uiCategory,
+                    factIds = topic.factIds,
+                    mostInteresting = topic.mostInteresting,
+                )
+                TopicSuggestion(
+                    idea = idea,
+                    title = idea.titleFor(treatment, arabic),
+                    usedRecently = topic.key in recent,
+                    fromProfile = true,
+                    hookAngle = idea.hookFor(arabic),
+                    uiCategory = topic.uiCategory,
+                    factIds = topic.factIds,
+                    mostInteresting = topic.mostInteresting,
+                )
+            }
+            val customQ = customProfileQuestions(treatment, templateId, recent, uiCategory)
+            return (mapped + customQ)
+                .sortedWith(
+                    compareBy<TopicSuggestion>(
+                        { it.usedRecently },
+                        { uiCategory == TopicUiCategory.ALL && !it.mostInteresting },
+                    ),
+                )
+                .take(limit)
+        }
+
+        // Custom or general treatment fallback
+        val base = ideas
+            .filter { matchesIndication(it, treatment) }
+            .filter { uiCategory == TopicUiCategory.ALL || uiCategory == TopicUiCategory.MOST_INTERESTING || it.uiCategory == uiCategory }
+            .map { idea ->
+                TopicSuggestion(
+                    idea = idea,
+                    title = idea.titleFor(treatment, arabic),
+                    usedRecently = idea.key in recent,
+                    hookAngle = idea.hookFor(arabic),
+                    uiCategory = idea.uiCategory,
+                )
+            }
+        val customQ = customProfileQuestions(treatment, templateId, recent, uiCategory)
+        return (customQ + base)
+            .sortedWith(
+                compareBy<TopicSuggestion>(
+                    { it.usedRecently },
+                    { templateId != null && templateId !in it.idea.templates },
+                    { !it.fromProfile },
+                ),
+            )
             .take(limit)
+    }
+
+    private fun customProfileQuestions(
+        treatment: Treatment?,
+        templateId: String?,
+        recent: Set<String>,
+        uiCategory: TopicUiCategory,
+    ): List<TopicSuggestion> {
+        if (treatment == null || uiCategory !in setOf(TopicUiCategory.ALL, TopicUiCategory.PATIENT_QUESTIONS)) {
+            return emptyList()
+        }
+        val prefix = treatment.id
+        return treatment.commonQuestions
+            .filter { it.isNotBlank() }
+            .mapIndexedNotNull { idx, q ->
+                val key = "profile_q_${prefix}_$idx"
+                if (treatmentTopics.any { it.treatmentId == resolveCatalogId(treatment) && it.title.en.equals(q, ignoreCase = true) }) {
+                    return@mapIndexedNotNull null
+                }
+                val idea = TopicIdea(
+                    key = key,
+                    category = TopicCategory.PATIENT_QUESTIONS,
+                    title = LocalizedText(q),
+                    brief = "Answer this real clinic patient question from ${treatment.name}: $q",
+                    templates = setOf(templateId ?: "patient_question"),
+                    needsProfileFacts = true,
+                    uiCategory = TopicUiCategory.PATIENT_QUESTIONS,
+                )
+                TopicSuggestion(
+                    idea = idea,
+                    title = q,
+                    usedRecently = key in recent,
+                    fromProfile = true,
+                    uiCategory = TopicUiCategory.PATIENT_QUESTIONS,
+                )
+            }
     }
 }

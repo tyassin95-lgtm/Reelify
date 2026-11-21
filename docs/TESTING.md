@@ -3,6 +3,21 @@
 All results below were produced in this build environment. Tests that were **not executed** are
 listed as such — nothing is reported as passed unless it ran.
 
+## 0.1 Reelify 2.1 results (branch `reelify-2.1-stability-content`)
+
+### JVM + Robolectric unit tests — `./gradlew :app:testDebugUnitTest`
+* **Outcome**: **172 passed, 0 failed, 1 skipped** (`173` total tests across **26** test suites). Skipped case is `CreativeEvalHarness.runLiveEvaluation` (requires live `REELIFY_OPENAI_API_KEY` env var).
+* **New / updated suites added in 2.1**:
+  * `TrimBoundsTest` (4/4) — normal, zero-duration, `<200ms` ultra-short, inverted ranges, rapid nudge & reset invariants.
+  * `PreviewAndCompositionSafetyTest` (4/4, Robolectric SDK 35) — explicit positive `durationUs != C.TIME_UNSET` across `singleClipPreview` (audio/muted/trimmed/image/voiceover) and full multi-track `CompositionFactory.build()` (beauty + B-roll + voiceover + music + SFX + captions + brand fill card), plus SHA-256 `PreviewProxyManager.fingerprint` invalidation and tmp-file safety.
+  * `TemplateArtworkGeometryTest` (3/3) — normalized `[0f..1f]` containment across all `FramingPreset` talking-head and device B-roll frames.
+  * `TreatmentKnowledgeAndTopicCatalogTest` (5/5) — verifies `>= 10` topics per combination across all 7 treatments × 6 templates (`420+` verified + `60` Cleopatra pending), fact reference integrity, CFU HIFU (not laser) safety, PicoStar wavelengths/handpieces, and Cleopatra vs DiamondGlow® ambiguity guard.
+  * `MigrationTest` (2/2, Robolectric + Room) — adds v2.0 -> v2.1 non-destructive `LibraryRepository.seedIfNeeded()` upgrade preserving user edits and confirming Cleopatra one-tap mapping.
+  * `TeleprompterPacingTest` (3/3) — short stationary viewport handling, `30/45/60s` synchronized scroll plans with lead-in hold, multiplier scaling, and reading-voice calibration.
+  * `Reelify21ScenariosTest` (3/3, MockWebServer) — end-to-end PicoStar (`30s` `ar-IQ` `myth_buster`), CFU Èlife (`45s` `ar-IQ` `patient_question`), and Aerolase (`60s` `en` `expert_explains`) checks.
+  * Existing suites updated for 2.1 & all passing: `DialectAndTopicsTest` (9/9), `CreativeEvalHarness.evalSetIsBalanced` (1/1 passed, `runLiveEvaluation` 1 skipped), `ScriptWriterTest` (15/15), `TemplateEngineTest` (13/13), `NormalizerCorpusTest` (15/15), `TimelineResolverTest` (9/9), `CaptionsTest` (9/9), `EditorOpsTest` (8/8), `OpenAiClientTest` (11/11), `DeepgramClientTest` (9/9), `ReelDirectorTest` (8/8), `DspTest` (8/8), `BeautyCalibrationTest` (8/8), `TemplateProjectTest` (7/7), `ProjectRepositoryTest` (5/5), `ClaimCheckerTest` (4/4), `TimingEstimatorTest` (4/4), `LookMathTest` (3/3), `AudioProcessorTest` (2/2).
+* **Not executed here (requires physical device / live API keys)**: instrumented tests (`androidTest`), on-device Media3 `ExoPlayer` / `TransformerRunner` proxy generation on camera hardware, GPU beauty ShaderProgram live rendering, live `REELIFY_OPENAI_API_KEY` script quality scoring, and human Baghdad Iraqi dialect review.
+
 ## 0. Reelify 2.0 results (branch `reelify-v2-refactor`)
 
 ### JVM unit tests — `./gradlew :app:testDebugUnitTest`

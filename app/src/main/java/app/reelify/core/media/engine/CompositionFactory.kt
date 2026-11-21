@@ -186,7 +186,11 @@ class CompositionFactory(private val context: Context, private val fonts: ReelFo
                 val builder = EditedMediaItem.Builder(mediaItem(clip, seg.sourceStartMs, seg.durationMs))
                     .setRemoveAudio(true)
                     .setEffects(Effects(emptyList(), fx))
-                if (clip.kind == MediaKind.IMAGE) builder.setDurationUs(durUs).setFrameRate(inputs.frameRate)
+                if (clip.kind == MediaKind.IMAGE) {
+                    builder.setDurationUs(durUs).setFrameRate(inputs.frameRate)
+                } else {
+                    builder.setDurationUs(itemSourceDurationUs(clip.sourceDurationMs, seg.sourceStartMs + seg.durationMs))
+                }
                 builder.build()
             }
         }
@@ -210,9 +214,11 @@ class CompositionFactory(private val context: Context, private val fonts: ReelFo
                 VoiceChainProcessor(a.noiseReduction.strength, a.speechEq, a.compression, 1f),
                 ClipGainProcessor(gain, dur),
             )
+            val srcStart = seg.sourceStartMs + skip
             b.addItem(
-                EditedMediaItem.Builder(mediaItem(seg.clip, seg.sourceStartMs + skip, dur))
+                EditedMediaItem.Builder(mediaItem(seg.clip, srcStart, dur))
                     .setRemoveVideo(true)
+                    .setDurationUs(itemSourceDurationUs(seg.clip.sourceDurationMs, srcStart + dur))
                     .setEffects(Effects(processors, emptyList()))
                     .build(),
             )
@@ -232,10 +238,17 @@ class CompositionFactory(private val context: Context, private val fonts: ReelFo
         var t = 0L
         while (t < total) {
             val d = minOf(trackLen, total - t)
+            val endPosMs = m.startOffsetMs + d
             val item = MediaItem.Builder().setUri(uri)
-                .setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(m.startOffsetMs).setEndPositionMs(m.startOffsetMs + d).build())
+                .setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setStartPositionMs(m.startOffsetMs).setEndPositionMs(endPosMs).build())
                 .build()
-            b.addItem(EditedMediaItem.Builder(item).setRemoveVideo(true).setEffects(Effects(listOf(EnvelopeGainProcessor(env, t)), emptyList())).build())
+            b.addItem(
+                EditedMediaItem.Builder(item)
+                    .setRemoveVideo(true)
+                    .setDurationUs(itemSourceDurationUs(inputs.musicDurationMs, endPosMs))
+                    .setEffects(Effects(listOf(EnvelopeGainProcessor(env, t)), emptyList()))
+                    .build(),
+            )
             t += d
         }
         return b.build()
@@ -257,12 +270,21 @@ class CompositionFactory(private val context: Context, private val fonts: ReelFo
             if (start > cursor) b.addGap((start - cursor) * 1000)
             val item = MediaItem.Builder().setUri(Uri.parse("asset:///${fxDef.assetPath}"))
                 .setClippingConfiguration(MediaItem.ClippingConfiguration.Builder().setEndPositionMs(dur).build()).build()
-            b.addItem(EditedMediaItem.Builder(item).setEffects(Effects(listOf(ClipGainProcessor(cue.gain * e.audio.sfxVolume, dur, 4.0)), emptyList())).build())
+            b.addItem(
+                EditedMediaItem.Builder(item)
+                    .setRemoveVideo(true)
+                    .setDurationUs(itemSourceDurationUs(fxDef.durationMs, dur))
+                    .setEffects(Effects(listOf(ClipGainProcessor(cue.gain * e.audio.sfxVolume, dur, 4.0)), emptyList()))
+                    .build(),
+            )
             cursor = start + dur
             added++
         }
         return if (added > 0) b.build() else null
     }
+
+    internal fun itemSourceDurationUs(sourceDurationMs: Long, minRequiredMs: Long): Long =
+        maxOf(sourceDurationMs, minRequiredMs).coerceAtLeast(1L) * 1000L
 
     private fun uriOf(ref: String): Uri = if (ref.startsWith("content://") || ref.startsWith("file://") || ref.startsWith("asset://")) Uri.parse(ref) else Uri.fromFile(File(ref))
 
@@ -310,8 +332,12 @@ class CompositionFactory(private val context: Context, private val fonts: ReelFo
 /** Single-clip composition (full source, effects applied) for the trim/beauty screen preview. */
 fun CompositionFactory.singleClipPreview(clip: MediaClip, grade: app.reelify.core.model.ColorGrade, width: Int = 720, height: Int = 1280): Composition {
     val uri = if (clip.uri.startsWith("content://") || clip.uri.startsWith("file://")) Uri.parse(clip.uri) else Uri.fromFile(File(clip.uri))
+    val sourceUs = clip.sourceDurationMs.coerceAtLeast(clip.trimEndMs).coerceAtLeast(500L) * 1000L
     if (clip.kind == MediaKind.AUDIO) {
-        val item = EditedMediaItem.Builder(MediaItem.fromUri(uri)).build()
+        val item = EditedMediaItem.Builder(MediaItem.fromUri(uri))
+            .setRemoveVideo(true)
+            .setDurationUs(sourceUs)
+            .build()
         return Composition.Builder(EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_AUDIO)).addItem(item).build()).build()
     }
     val fx = mutableListOf<Effect>()
@@ -325,8 +351,11 @@ fun CompositionFactory.singleClipPreview(clip: MediaClip, grade: app.reelify.cor
     val reframe = ReframeTransformation(clip.transform.zoom, clip.transform.panX, clip.transform.panY, clip.transform.flipHorizontal, 0f, 0, 1)
     if (!reframe.isStatic) fx += reframe
     val mediaItem = if (clip.kind == MediaKind.IMAGE) MediaItem.Builder().setUri(uri).setImageDurationMs(5000).build() else MediaItem.fromUri(uri)
-    val b = EditedMediaItem.Builder(mediaItem).setEffects(Effects(listOf(ClipGainProcessor(if (clip.muted) 0f else clip.volume, 0)), fx))
-    if (clip.kind == MediaKind.IMAGE) b.setDurationUs(5_000_000).setFrameRate(30)
+    val durationUs = if (clip.kind == MediaKind.IMAGE) 5_000_000L else sourceUs
+    val b = EditedMediaItem.Builder(mediaItem)
+        .setDurationUs(durationUs)
+        .setEffects(Effects(listOf(ClipGainProcessor(if (clip.muted) 0f else clip.volume, durationUs / 1000L)), fx))
+    if (clip.kind == MediaKind.IMAGE) b.setFrameRate(30)
     val types = if (clip.kind == MediaKind.VIDEO && clip.hasAudio) setOf(C.TRACK_TYPE_VIDEO, C.TRACK_TYPE_AUDIO) else setOf(C.TRACK_TYPE_VIDEO)
     return Composition.Builder(EditedMediaItemSequence.Builder(types).addItem(b.build()).build()).build()
 }

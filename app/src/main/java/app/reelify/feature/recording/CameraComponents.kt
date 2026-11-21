@@ -33,9 +33,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
+import app.reelify.core.model.TeleprompterMode
+import kotlin.math.roundToInt
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.testTag
@@ -70,6 +77,78 @@ import app.reelify.core.designsystem.Tajawal
  * are always close to the lens. Auto-scroll is time-based (frame clock), manual drag always works,
  * tapping toggles pause. Mirroring flips the text for beam-splitter rigs. Never recorded.
  */
+data class TeleprompterScrollPlan(
+    val totalScrollPx: Float,
+    val stationary: Boolean,
+    val pxPerSecond: Float,
+    val effectiveDurationMs: Long,
+    val leadInHoldMs: Long,
+)
+
+/**
+ * Pure pacing calculator that matches teleprompter scroll distance to actual shot duration and text height.
+ * Short scripts that fit cleanly inside the viewport remain stationary instead of scrolling off-screen.
+ */
+object TeleprompterPacer {
+
+    fun computePlan(
+        textHeightPx: Float,
+        viewportHeightPx: Float,
+        targetDurationMs: Long,
+        estimatedSpeechMs: Long,
+        mode: TeleprompterMode,
+        speedMultiplier: Float = 1f,
+        leadInHoldMs: Long = 800L,
+        manualBasePxPerSec: Float = 28f,
+    ): TeleprompterScrollPlan {
+        val safeTargetMs = targetDurationMs.coerceAtLeast(3000L)
+        val safeSpeed = speedMultiplier.coerceIn(0.4f, 2.5f)
+        if (textHeightPx <= 0f || viewportHeightPx <= 0f || textHeightPx <= viewportHeightPx * 0.88f) {
+            return TeleprompterScrollPlan(
+                totalScrollPx = 0f,
+                stationary = true,
+                pxPerSecond = 0f,
+                effectiveDurationMs = safeTargetMs,
+                leadInHoldMs = leadInHoldMs,
+            )
+        }
+
+        val totalScrollPx = (textHeightPx - viewportHeightPx * 0.55f).coerceAtLeast(0f)
+        if (totalScrollPx < 4f) {
+            return TeleprompterScrollPlan(0f, stationary = true, pxPerSecond = 0f, effectiveDurationMs = safeTargetMs, leadInHoldMs = leadInHoldMs)
+        }
+
+        val effectiveDurationMs = when (mode) {
+            TeleprompterMode.AUTO_FIT -> {
+                val speechWindow = maxOf((safeTargetMs - leadInHoldMs - 1000L), (estimatedSpeechMs * 0.92f).toLong())
+                (speechWindow.coerceAtLeast(2500L) / safeSpeed).toLong().coerceAtLeast(1800L)
+            }
+            TeleprompterMode.MATCH_SHOT -> {
+                ((safeTargetMs - leadInHoldMs - 800L).coerceAtLeast(2500L) / safeSpeed).toLong().coerceAtLeast(1800L)
+            }
+            TeleprompterMode.MANUAL -> {
+                val baseSpeed = (manualBasePxPerSec * safeSpeed).coerceAtLeast(8f)
+                (totalScrollPx / baseSpeed * 1000f).toLong().coerceAtLeast(1500L)
+            }
+        }
+        val pxPerSec = totalScrollPx / (effectiveDurationMs / 1000f).coerceAtLeast(1.5f)
+        return TeleprompterScrollPlan(
+            totalScrollPx = totalScrollPx,
+            stationary = false,
+            pxPerSecond = pxPerSec,
+            effectiveDurationMs = effectiveDurationMs,
+            leadInHoldMs = leadInHoldMs,
+        )
+    }
+
+    fun targetScrollOffsetPx(plan: TeleprompterScrollPlan, elapsedRecordingMs: Long): Int {
+        if (plan.stationary || plan.totalScrollPx <= 0f) return 0
+        val activeMs = (elapsedRecordingMs - plan.leadInHoldMs).coerceAtLeast(0L)
+        val fraction = (activeMs.toFloat() / plan.effectiveDurationMs.toFloat()).coerceIn(0f, 1f)
+        return (plan.totalScrollPx * fraction).roundToInt()
+    }
+}
+
 @Composable
 fun TeleprompterPanel(
     text: String,
@@ -81,50 +160,96 @@ fun TeleprompterPanel(
     onToggle: () -> Unit,
     height: Dp,
     modifier: Modifier = Modifier,
+    targetDurationMs: Long = 10_000L,
+    estimatedSpeechMs: Long = 8_500L,
+    mode: TeleprompterMode = TeleprompterMode.AUTO_FIT,
+    elapsedRecordingMs: Long? = null,
+    resetKey: Any = Unit,
 ) {
     val scroll = rememberScrollState()
     val density = LocalDensity.current
-    LaunchedEffect(running, speed, sizeSp) {
+    val safe = androidx.compose.runtime.remember(text) { app.reelify.core.content.GeneratedContentNormalizer.displaySafe(text) }
+    val arabic = app.reelify.core.content.GeneratedContentNormalizer.isArabicDominant(safe)
+    val lead = height * 0.24f
+
+    var textHeightPx by remember { mutableFloatStateOf(0f) }
+    var viewportHeightPx by remember { mutableFloatStateOf(with(density) { height.toPx() }) }
+    val baseManualPx = with(density) { (sizeSp * 1.35f).sp.toPx() } / 2.6f
+    val plan = remember(textHeightPx, viewportHeightPx, targetDurationMs, estimatedSpeechMs, mode, speed, baseManualPx) {
+        TeleprompterPacer.computePlan(
+            textHeightPx = textHeightPx,
+            viewportHeightPx = viewportHeightPx,
+            targetDurationMs = targetDurationMs,
+            estimatedSpeechMs = estimatedSpeechMs,
+            mode = mode,
+            speedMultiplier = speed,
+            manualBasePxPerSec = baseManualPx,
+        )
+    }
+
+    LaunchedEffect(safe, resetKey) {
+        scroll.scrollTo(0)
+    }
+
+    var lastElapsed by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(running, plan, elapsedRecordingMs != null) {
         var last = 0L
-        while (running) {
-            withFrameNanos { now ->
-                if (last != 0L) {
-                    val dt = (now - last) / 1e9f
-                    // ≈ one line every 2.3 s at speed 1 for the default size.
-                    scroll.dispatchRawDelta(dt * with(density) { (sizeSp * 1.55f).sp.toPx() } / 2.3f * speed)
+        while (running && !plan.stationary) {
+            if (elapsedRecordingMs != null) {
+                val targetPx = TeleprompterPacer.targetScrollOffsetPx(plan, elapsedRecordingMs)
+                if (!scroll.isScrollInProgress && targetPx >= scroll.value) {
+                    scroll.scrollTo(targetPx)
                 }
-                last = now
+                lastElapsed = elapsedRecordingMs
+                kotlinx.coroutines.delay(50)
+            } else {
+                withFrameNanos { now ->
+                    if (last != 0L && !scroll.isScrollInProgress) {
+                        val dt = (now - last) / 1e9f
+                        scroll.dispatchRawDelta(dt * plan.pxPerSecond)
+                    }
+                    last = now
+                }
             }
         }
     }
-    val safe = androidx.compose.runtime.remember(text) { app.reelify.core.content.GeneratedContentNormalizer.displaySafe(text) }
-    val arabic = app.reelify.core.content.GeneratedContentNormalizer.isArabicDominant(safe)
-    val lead = height * 0.30f
     Box(
-        modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(20.dp)).background(Color.Black.copy(alpha = opacity.coerceIn(0.15f, 0.9f)))
+        modifier.fillMaxWidth().height(height)
+            .onSizeChanged { viewportHeightPx = it.height.toFloat() }
+            .clip(RoundedCornerShape(20.dp)).background(Color.Black.copy(alpha = opacity.coerceIn(0.15f, 0.9f)))
             .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
             .semantics { contentDescription = "Teleprompter" },
     ) {
         Text(
             safe,
+            onTextLayout = { layout -> textHeightPx = layout.size.height.toFloat() },
             modifier = Modifier.fillMaxSize()
                 .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen; scaleX = if (mirror) -1f else 1f }
                 .drawWithContent {
                     drawContent()
                     // Fade top and bottom edges so the reading band stays calm.
-                    drawRect(Brush.verticalGradient(0f to Color.Transparent, 0.18f to Color.Black, 0.78f to Color.Black, 1f to Color.Transparent), blendMode = BlendMode.DstIn)
+                    if (!plan.stationary) {
+                        drawRect(Brush.verticalGradient(0f to Color.Transparent, 0.14f to Color.Black, 0.84f to Color.Black, 1f to Color.Transparent), blendMode = BlendMode.DstIn)
+                    }
                 }
                 .verticalScroll(scroll)
                 .pointerInput(Unit) { detectTapGestures(onTap = { onToggle() }) }
-                .padding(start = 20.dp, end = 20.dp, top = lead, bottom = height),
+                .padding(
+                    start = 20.dp,
+                    end = 20.dp,
+                    top = if (plan.stationary) 16.dp else lead,
+                    bottom = if (plan.stationary) 16.dp else (height * 0.45f),
+                ),
             style = MaterialTheme.typography.headlineSmall.copy(
-                fontSize = sizeSp.sp, lineHeight = (sizeSp * 1.5f).sp, color = Color.White,
+                fontSize = sizeSp.sp, lineHeight = (sizeSp * 1.48f).sp, color = Color.White,
                 fontFamily = if (arabic) Tajawal else MaterialTheme.typography.headlineSmall.fontFamily,
                 textDirection = if (arabic) TextDirection.Rtl else TextDirection.Content, textAlign = TextAlign.Center,
             ),
         )
         // reading line
-        Box(Modifier.align(Alignment.TopStart).padding(top = lead + (sizeSp * 0.75f).dp).width(4.dp).height((sizeSp * 1.2f).dp).background(Rf.Rose, RoundedCornerShape(2.dp)))
+        if (!plan.stationary) {
+            Box(Modifier.align(Alignment.TopStart).padding(top = lead + (sizeSp * 0.7f).dp).width(4.dp).height((sizeSp * 1.15f).dp).background(Rf.Rose, RoundedCornerShape(2.dp)))
+        }
         Box(Modifier.align(Alignment.TopEnd).padding(6.dp).size(36.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.12f)).clickable(onClick = onToggle), contentAlignment = Alignment.Center) {
             Icon(if (running) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (running) "Pause teleprompter" else "Start teleprompter", tint = Color.White, modifier = Modifier.size(20.dp))
         }

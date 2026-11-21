@@ -1,5 +1,7 @@
 package app.reelify.feature.preview
 
+import android.content.Intent
+import androidx.core.content.FileProvider
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -125,10 +127,24 @@ fun PreviewScreen(pid: String, onBack: () -> Unit, onAdvanced: () -> Unit, onCap
     var adjust by remember { mutableStateOf<Adjust?>(null) }
     var showAdjust by rememberSaveable { mutableStateOf(false) }
 
-    LaunchedEffect(ui.composition) { ui.composition?.let { controller.set(it, controller.position()) } }
+    LaunchedEffect(ui.proxyFile, ui.composition, ui.buildError) {
+        val proxy = ui.proxyFile
+        if (proxy != null && proxy.exists() && proxy.length() > 1024) {
+            controller.setFile(proxy, controller.position())
+        } else if (!ui.building && ui.buildError != null && ui.exportedFile != null) {
+            controller.setFile(ui.exportedFile!!, controller.position())
+        }
+    }
     LaunchedEffect(Unit) { while (true) { pos = controller.position(); delay(80) } }
     val b = bundle ?: return
     val total = b.project.duration.totalMs
+    val renderedVideo = ui.exportedFile ?: ui.proxyFile
+    fun openExternal(file: java.io.File) {
+        runCatching {
+            val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".files", file)
+            ctx.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "video/mp4").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+        }
+    }
 
     ScreenFrame(b.project.title, onBack, subtitle = app.reelify.feature.common.tr("Step 4 of 4 · Preview & export", "الخطوة 4 من 4 · المعاينة والتصدير"), actions = {
         GhostButton(app.reelify.feature.common.tr("Advanced", "متقدم"), onAdvanced, icon = Icons.Rounded.ViewTimeline, color = Rf.TextSecondary)
@@ -142,13 +158,39 @@ fun PreviewScreen(pid: String, onBack: () -> Unit, onAdvanced: () -> Unit, onCap
             Box(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
                 Box(Modifier.fillMaxHeight().aspectRatio(9f / 16f).clip(RoundedCornerShape(22.dp)).background(Color.Black).clickable { controller.toggle() }) {
                     PlayerSurface(controller, Modifier.fillMaxSize())
-                    if (ui.building) Box(Modifier.align(Alignment.TopEnd).padding(10.dp)) { Spinner(22.dp) }
-                    if (!playing) Box(Modifier.align(Alignment.Center).size(68.dp).clip(CircleShape).background(Color(0x88000000)), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.PlayArrow, null, tint = Color.White, modifier = Modifier.size(38.dp)) }
+                    if (ui.building) {
+                        Row(
+                            Modifier.align(Alignment.TopEnd).padding(10.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xAA000000)).padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Spinner(16.dp)
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                "${ui.renderProgress ?: 0}%",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color.White,
+                            )
+                        }
+                    }
+                    if (!playing && !ui.building) Box(Modifier.align(Alignment.Center).size(68.dp).clip(CircleShape).background(Color(0x88000000)), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.PlayArrow, null, tint = Color.White, modifier = Modifier.size(38.dp)) }
                 }
             }
             Column(Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
-                ui.buildError?.let { ErrorBanner(it) }
-                playerError?.let { ErrorBanner(it) }
+                ui.buildError?.let { err ->
+                    ErrorBanner("Preview is unavailable. Open the rendered video. ($err)", onRetry = vm::retryPreview)
+                }
+                playerError?.let { err ->
+                    ErrorBanner("Preview is unavailable. Open the rendered video. ($err)", onRetry = vm::retryPreview)
+                }
+                if ((ui.buildError != null || playerError != null) && renderedVideo != null) {
+                    Spacer(Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SecondaryButton(app.reelify.feature.common.tr("Play rendered video", "تشغيل الفيديو الجاهز"), { controller.setFile(renderedVideo, 0L, play = true) })
+                        SecondaryButton(app.reelify.feature.common.tr("External player", "مشغّل خارجي"), { openExternal(renderedVideo) })
+                    }
+                } else if (ui.exportedFile != null && !ui.building) {
+                    GhostButton(app.reelify.feature.common.tr("Open exported MP4", "افتح الفيديو المصدّر"), { openExternal(ui.exportedFile!!) })
+                }
                 ui.timeline?.blocking?.takeIf { it.isNotEmpty() }?.let { InfoBanner(it.joinToString("\n") { i -> i.message }, color = Rf.Warning) }
                 if (b.project.captions?.source == CaptionSource.SCRIPT_ESTIMATE && b.project.edit.captions.enabled) Text(
                     app.reelify.feature.common.tr("Captions are approximate — estimated from the script, not transcribed.", "الترجمة تقريبية — مأخوذة من السكربت، مو من التفريغ الصوتي."),

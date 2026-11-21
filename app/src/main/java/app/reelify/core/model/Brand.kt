@@ -78,6 +78,14 @@ data class Treatment(
     val sortOrder: Int = 0,
     val accentColor: Long = 0xFF9D174D,
     val updatedAt: Long = 0,
+    // ---- Added in Reelify 2.1 for versioned non-destructive built-in upgrades & verified sourcing
+    val seedVersion: Int = 1,
+    val userEditedFields: Set<String> = emptySet(),
+    val manufacturer: String = "",
+    val deviceModel: String = "",
+    val technologyType: String = "",
+    val identityConfirmed: Boolean = true,
+    val linkedReferenceProfileId: String? = null,
 ) {
     val isGeneral: Boolean get() = id == GENERAL_ID
 

@@ -1,10 +1,14 @@
-# Reelify 2.0 — template-first reel studio (Android)
+# Reelify 2.1 — template-first reel studio (Android)
 
-Reelify is a native Android app (Kotlin + Jetpack Compose) for a skin‑treatment specialist:
-**choose a template → pick a topic → film three planned shots → export a branded reel**.
-Every reel is exactly **30, 45 or 60 seconds**, built from **three equal shots**.
+Reelify (`2.1.0`, `versionCode = 3`) is a native, local-first Android studio (Kotlin + Jetpack Compose) for aesthetic skin & laser specialists:
+**choose a template → pick a clinical topic → film three timed shots → export a branded 30/45/60s reel**.
 
-**2.0:** filming and editing come from **versioned production templates** (six built-in formats).
+**New in 2.1:**
+- **Reliable Trim & Preview playback**: `TrimScreen` uses standard Media3 `ExoPlayer` (`TrimPlayerController`) with GPU-effect fallback and validated bounds (`TrimBounds`); finished-reel preview renders deterministic proxy MP4s (`PreviewProxyManager`) for smooth playback without multi-track `CompositionPlayer` instability, plus explicit `EditedMediaItem.durationUs` across all Media3 sequences.
+- **Clinical knowledge & 480+ specific topics**: Verified knowledge packs (`TreatmentKnowledgeCatalog`) for **CFU Èlife** (Biotec Italia HIFU — explicitly not laser), **PicoStar** (Asclepion `1064/532 nm` picosecond), **DiamondGlow®** (with explicit unconfirmed-identity safeguard on **Cleopatra**), **Aerolase**, **Dermablate**, **LaseMD Ultra**, and **Diamond Peeling**, with non-destructive versioned Room upgrades and **480** treatment-and-template-specific EN/Iraqi-Arabic topics (`TopicLibrary`).
+- **Smarter AI writing & teleprompter pacing**: Factual briefs (`FactualBriefBuilder`), anti-filler checks, Instagram/Snapchat selection, `"Save line to my voice guide"` + `"Sound like me"`, layout-measured `TeleprompterPacer` keeping short scripts stationary and syncing long scripts to shot duration, and interactive voice-pace calibration.
+
+**2.0 foundation:** filming and editing come from **versioned production templates** (six built-in formats).
 The AI writes only words — fresh angles, three distinct hooks, dialogue and headlines, with a
 dedicated Iraqi Arabic scriptwriter. See [`docs/REELIFY_V2_DESIGN.md`](docs/REELIFY_V2_DESIGN.md).
 

@@ -1,4 +1,6 @@
-# Reelify 2.0 — template-first product architecture
+# Reelify 2.0 & 2.1 — template-first product architecture
+
+> **Reelify 2.1 Reliability & Clinical Content Addendum:** Building directly on 2.0's deterministic template foundation, 2.1 separates single-clip trim playback (`ExoPlayer` via `TrimPlayerController` + `TrimBounds`), moves finished-reel multi-track/effect preview to cached rendered MP4 proxies (`PreviewProxyManager`) with `try/catch` fallbacks and explicit `EditedMediaItem.durationUs`, clips template card artwork cleanly (`TemplateFrameGeometry`), introduces sourced `TreatmentKnowledgeCatalog` packs + non-destructive `seedVersion` Room upgrades + `480` treatment/template topics, strengthens `FactualBriefBuilder` / anti-filler script validation + Instagram/Snapchat tone + owner voice persistence, and replaces fixed teleprompter scroll velocity with duration-synced `TeleprompterPacer` (`AUTO_FIT`, `MATCH_SHOT`, `MANUAL`).
 
 Reelify 1.x behaved like an AI filmmaking workstation: the model invented a full production plan
 (camera, framing, lighting, SFX, editing) for every reel, the creator answered up to eight idea

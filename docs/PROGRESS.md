@@ -1,5 +1,16 @@
 # Reelify — implementation progress
 
+## Reelify 2.1 (branch `reelify-2.1-stability-content`)
+
+| Track | Status |
+|---|---|
+| P0 Crash investigation & Trim/Preview hardening | Done — `docs/REELIFY_2_1_CRASH_AUDIT.md`, `TrimBounds`, `TrimPlayerController`, explicit `EditedMediaItem` `durationUs`, `PreviewProxyManager` + hardened `PreviewController`, `TrimBoundsTest`, `PreviewAndCompositionSafetyTest` |
+| P1 Template artwork clipping & overflow fix | Done — bounded `TemplateFrameGeometry` + dual `clipPath` in `ReelComponents.kt`, `TemplateArtworkGeometryTest` |
+| P1 Treatment knowledge research & non-destructive DB upgrade | Done — `TreatmentKnowledgeCatalog` (CFU Èlife HIFU, PicoStar, DiamondGlow®, Aerolase, Dermablate, LaseMD Ultra, Diamond Peeling + unconfirmed Cleopatra guard), `CURRENT_SEED_VERSION = 2` field merge in `LibraryRepository`, `MigrationTest`, `docs/TREATMENT_KNOWLEDGE_SOURCES.md` |
+| P1 Topic suggestion & AI script overhaul | Done — `480` treatment/template topics (`catalog/*TopicCatalog.kt`, `TopicLibrary`), Stage 2 category chips / `"Show more"` / Instagram & Snapchat toggle / Cleopatra confirmation / `"Give me fresh ideas"` / `FactualBriefBuilder` / anti-filler validation / `"Save line to my voice guide"` + `SOUND_LIKE_ME`, `TreatmentKnowledgeAndTopicCatalogTest`, `Reelify21ScenariosTest`, `docs/CLINIC_CONTENT_RESEARCH.md`, `docs/CONTENT_QUALITY_EVALUATION.md` |
+| P1 Script duration budgets & teleprompter pacing | Done — `TimingEstimator.wordBudgetForShot()`, `TeleprompterPacer` (`AUTO_FIT`/`MATCH_SHOT`/`MANUAL`), synchronized countdown/recording reset, short-clip shortfall banner on `FilmScreen`, interactive reading-voice calibration in `SettingsScreens.kt`, `TeleprompterPacingTest` |
+| Final tests & APK packaging | `:app:testDebugUnitTest` 172 passed / 1 skipped / 0 failed; APKs packaged into `dist/` |
+
 ## Reelify 2.0 (branch `reelify-v2-refactor`)
 
 | Phase | Status |

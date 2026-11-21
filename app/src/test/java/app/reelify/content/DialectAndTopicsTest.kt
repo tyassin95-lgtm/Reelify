@@ -52,19 +52,29 @@ class DialectAndTopicsTest {
     }
 
     @Test fun `profiles that need configuration only get safe generic topics`() {
-        val cfu = TreatmentSeed.treatments.first { it.id == "cfu" }
-        assertThat(cfu.needsConfiguration).isTrue()
-        val s = TopicLibrary.suggestions(cfu, "expert_explains", emptyList(), arabic = false, limit = 50)
-        assertThat(s).isNotEmpty()
+        val cleopatra = TreatmentSeed.treatments.first { it.id == "cleopatra" }
+        assertThat(cleopatra.needsConfiguration).isTrue()
+        assertThat(cleopatra.identityConfirmed).isFalse()
+        val s = TopicLibrary.suggestions(cleopatra, "expert_explains", emptyList(), arabic = false, limit = 50)
+        assertThat(s).hasSize(10)
         assertThat(s.none { it.idea.needsProfileFacts }).isTrue()
+
+        val cfu = TreatmentSeed.treatments.first { it.id == "cfu" }
+        assertThat(cfu.needsConfiguration).isFalse()
+        assertThat(TopicLibrary.suggestions(cfu, "expert_explains", emptyList(), false, 50).any { it.idea.needsProfileFacts }).isTrue()
+
         val aerolase = TreatmentSeed.treatments.first { it.id == "aerolase" }
         assertThat(TopicLibrary.suggestions(aerolase, "myth_buster", emptyList(), false, 50).any { it.idea.needsProfileFacts }).isTrue()
     }
 
-    @Test fun `indication-specific topics only appear when the profile mentions them`() {
-        val aerolase = TreatmentSeed.treatments.first { it.id == "aerolase" }   // acne + pigmentation
-        val keys = TopicLibrary.suggestions(aerolase, null, emptyList(), false, 50).map { it.idea.key }
-        assertThat(keys).containsAtLeast("acne_back", "pigment_sun")
+    @Test fun `indication-specific topics match treatment profile and fallback respects indications`() {
+        val aerolase = TreatmentSeed.treatments.first { it.id == "aerolase" } // acne + pigmentation
+        val aeroKeys = TopicLibrary.suggestions(aerolase, null, emptyList(), false, 60).map { it.idea.key }
+        assertThat(aeroKeys).containsAtLeast("aero_ee_04", "aero_pa_01", "aero_pa_02")
+
+        val customAcne = aerolase.copy(id = "custom_acne", linkedReferenceProfileId = null)
+        assertThat(TopicLibrary.suggestions(customAcne, null, emptyList(), false, 50).map { it.idea.key }).contains("acne_back")
+
         val general = TreatmentSeed.treatments.first { it.isGeneral }
         assertThat(TopicLibrary.suggestions(general, null, emptyList(), false, 50).map { it.idea.key }).doesNotContain("acne_back")
     }
@@ -82,9 +92,13 @@ class DialectAndTopicsTest {
 
     @Test fun `titles are localized and filled with the treatment name`() {
         val aerolase = TreatmentSeed.treatments.first { it.id == "aerolase" }
-        val en = TopicLibrary.suggestions(aerolase, "myth_buster", emptyList(), false, 50).first { it.idea.key == "misconception" }
-        val ar = TopicLibrary.suggestions(aerolase, "myth_buster", emptyList(), true, 50).first { it.idea.key == "misconception" }
+        val en = TopicLibrary.suggestions(aerolase, "expert_explains", emptyList(), false, 50).first { it.idea.key == "aero_ee_01" }
+        val ar = TopicLibrary.suggestions(aerolase, "expert_explains", emptyList(), true, 50).first { it.idea.key == "aero_ee_01" }
         assertThat(en.title).contains("Aerolase")
-        assertThat(ar.title).contains("إيروليز")
+        assertThat(ar.title).contains("أيروليز")
+
+        val custom = aerolase.copy(id = "custom_demo", name = "ClinicLaser", arabicName = "ليزر خاص", linkedReferenceProfileId = null)
+        val cEn = TopicLibrary.suggestions(custom, "myth_buster", emptyList(), false, 50).first { it.idea.key == "misconception" }
+        assertThat(cEn.title).contains("ClinicLaser")
     }
 }
