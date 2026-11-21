@@ -81,7 +81,8 @@ class ExportPipelineTest {
         if (isEmulator) inputs = inputs.copy(width = 360, height = 640)
         val built = c.compositionFactory.build(inputs, RenderPurpose.EXPORT)
         val out = File(dir, "reel.mp4")
-        c.transformerRunner.export(built.composition, out, 3_000_000, audioOnly = false) {}
+        val watchdog = if (isEmulator) 30 * 60_000L else 60_000L
+        c.transformerRunner.export(built.composition, out, 3_000_000, audioOnly = false, maxDelayBetweenSamplesMs = watchdog) { android.util.Log.w("ReelifyE2E", "render progress $it%") }
         val report = ExportValidator.validate(out, inputs.width, inputs.height, duration.totalMs, 30, expectAudio = true,
             captionsExpected = true, captionFramesDrawn = built.overlayRenderer!!.captionRenders,
             overlaysExpected = true, overlayFramesDrawn = built.overlayRenderer!!.overlayRenders)
@@ -91,7 +92,7 @@ class ExportPipelineTest {
         // Dialogue extraction for Deepgram produces a real AAC audio file
         val dialogue = c.compositionFactory.build(c.preparer.inputs(p.id, normalize = false), RenderPurpose.DIALOGUE)
         val m4a = File(dir, "dialogue.m4a")
-        c.transformerRunner.export(dialogue.composition, m4a, 0, audioOnly = true) {}
+        c.transformerRunner.export(dialogue.composition, m4a, 0, audioOnly = true, maxDelayBetweenSamplesMs = watchdog) { android.util.Log.w("ReelifyE2E", "dialogue progress $it%") }
         val audioReport = ExportValidator.validate(m4a, 0, 0, duration.totalMs - 0, 30, expectAudio = true, false, 0, false, 0, audioOnly = true)
         assertThat(audioReport.checks.first { it.first.startsWith("Audio track") }.second).isTrue()
 

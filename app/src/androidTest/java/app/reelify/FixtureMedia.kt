@@ -64,7 +64,7 @@ object FixtureMedia {
             .addItem(EditedMediaItem.Builder(MediaItem.Builder().setUri(Uri.fromFile(img)).setImageDurationMs((seconds * 1000).toLong()).build()).setDurationUs(us).setFrameRate(30).build()).build()
         val audio = EditedMediaItemSequence.Builder(setOf(C.TRACK_TYPE_AUDIO)).addItem(EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(wav))).build()).build()
         val out = File(dir, "$name.mp4")
-        TransformerRunner(context).export(Composition.Builder(video, audio).build(), out, 4_000_000, audioOnly = false) {}
+        TransformerRunner(context).export(Composition.Builder(video, audio).build(), out, 4_000_000, audioOnly = false, maxDelayBetweenSamplesMs = 30 * 60_000L) {}
         return out
     }
 }

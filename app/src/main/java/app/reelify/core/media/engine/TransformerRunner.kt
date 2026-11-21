@@ -34,6 +34,7 @@ class TransformerRunner(private val context: Context) {
         output: File,
         videoBitrate: Int,
         audioOnly: Boolean,
+        maxDelayBetweenSamplesMs: Long = 60_000,
         onProgress: (Int) -> Unit,
     ): ExportResult = withContext(Dispatchers.Main) {
         output.parentFile?.mkdirs()
@@ -41,6 +42,8 @@ class TransformerRunner(private val context: Context) {
         coroutineScope {
             val builder = Transformer.Builder(context)
                 .setAudioMimeType(MimeTypes.AUDIO_AAC)
+                // Watchdog: fail rather than hang forever, but tolerate slow devices/GPU effects.
+                .setMaxDelayBetweenMuxerSamplesMs(maxDelayBetweenSamplesMs)
             if (!audioOnly) {
                 builder.setVideoMimeType(MimeTypes.VIDEO_H264)
                 builder.setEncoderFactory(

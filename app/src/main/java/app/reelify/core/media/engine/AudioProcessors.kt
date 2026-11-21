@@ -106,6 +106,7 @@ class VoiceChainProcessor(
     private var comps: Array<Compressor> = emptyArray()
     private var toDrop = 0
     private var latency = 0
+    private var tailFlushed = false
 
     override fun onConfigure(inputAudioFormat: AudioFormat): AudioFormat {
         if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT && inputAudioFormat.encoding != C.ENCODING_PCM_FLOAT) {
@@ -128,6 +129,7 @@ class VoiceChainProcessor(
         comps = Array(channels) { Compressor(fs) }
         latency = denoisers.firstOrNull()?.latency ?: 0
         toDrop = latency
+        tailFlushed = false
     }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
@@ -169,7 +171,11 @@ class VoiceChainProcessor(
     }
 
     override fun onQueueEndOfStream() {
-        // Flush the denoiser tail so the item keeps its exact length.
+        // Flush the denoiser tail (once) so the item keeps its exact length. Media3's
+        // AudioProcessingPipeline may call queueEndOfStream() repeatedly until isEnded(), so this
+        // must be idempotent — otherwise the tail would be emitted forever.
+        if (tailFlushed) return
+        tailFlushed = true
         if (latency > 0 && channels > 0) emit(Array(channels) { FloatArray(latency) }, latency)
     }
 
