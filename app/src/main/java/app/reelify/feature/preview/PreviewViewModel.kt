@@ -65,7 +65,7 @@ class PreviewViewModel(private val c: AppContainer, private val pid: String) : V
             .onFailure { e -> if (e is CancellationException) throw e; _ui.update { it.copy(building = false, buildError = e.message) } }
     }
 
-    fun edit(t: (EditSettings) -> EditSettings) = viewModelScope.launch { c.projects.updateEdit(pid, t) }
+    fun edit(t: (EditSettings) -> EditSettings) = viewModelScope.launch { c.projects.updateEdit(pid, transform = t) }
 
     fun aiEdit(request: String) {
         if (request.isBlank()) return

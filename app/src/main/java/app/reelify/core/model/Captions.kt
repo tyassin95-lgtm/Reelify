@@ -50,7 +50,7 @@ enum class CaptionAnimation(val label: String) { NONE("None"), WORD_HIGHLIGHT("W
 enum class CaptionAlign { CENTER, START, END }
 
 @Serializable
-enum class CaptionPresetId(val label: String) { MINIMAL_WHITE("Minimal White"), PREMIUM_BURGUNDY("Premium Burgundy"), BOLD_SOCIAL("Bold Social"), CINEMATIC("Cinematic"), CLEAN_CLINICAL("Clean Clinical"), CUSTOM("Custom") }
+enum class CaptionPresetId(val label: String) { PREMIUM_MINIMAL("Premium Minimal"), BOLD_ENGAGEMENT("Bold Engagement"), MINIMAL_WHITE("Minimal White"), PREMIUM_BURGUNDY("Premium Burgundy"), BOLD_SOCIAL("Bold Social"), CINEMATIC("Cinematic"), CLEAN_CLINICAL("Clean Clinical"), CUSTOM("Custom") }
 
 /** Colors are ARGB packed as Long for serialization stability. */
 @Serializable
@@ -76,11 +76,14 @@ data class CaptionStyle(
 ) {
     companion object {
         fun preset(id: CaptionPresetId): CaptionStyle = when (id) {
+            // Reelify 2.0 signature presets: clean white type, restrained brand emphasis.
+            CaptionPresetId.PREMIUM_MINIMAL -> CaptionStyle(id, CaptionFont.SANS_BOLD, 56f, 0xFFFFFFFF, 0xFFFB7185, false, 0, false, 0xB3000000, 2.5f, true, 0.70f, CaptionAlign.CENTER, CaptionAnimation.WORD_HIGHLIGHT, 4)
+            CaptionPresetId.BOLD_ENGAGEMENT -> CaptionStyle(id, CaptionFont.SANS_BOLD, 68f, 0xFFFFFFFF, 0xFFE11D48, true, 0, false, 0xE6000000, 4f, true, 0.64f, CaptionAlign.CENTER, CaptionAnimation.POP, 3)
             CaptionPresetId.MINIMAL_WHITE -> CaptionStyle(id, CaptionFont.SANS, 54f, 0xFFFFFFFF, 0xFFFFFFFF, false, 0, false, 0x99000000, 0f, true, 0.68f, CaptionAlign.CENTER, CaptionAnimation.FADE, 5)
             CaptionPresetId.PREMIUM_BURGUNDY -> CaptionStyle(id, CaptionFont.SANS_BOLD, 58f, 0xFFFFFFFF, 0xFF9D174D, true, 0, false, 0xCC000000, 0f, true, 0.66f, CaptionAlign.CENTER, CaptionAnimation.WORD_HIGHLIGHT, 4)
             CaptionPresetId.BOLD_SOCIAL -> CaptionStyle(id, CaptionFont.SANS_BOLD, 70f, 0xFFFFFFFF, 0xFFFACC15, false, 0, false, 0xFF000000, 7f, false, 0.64f, CaptionAlign.CENTER, CaptionAnimation.POP, 3, uppercase = true)
             CaptionPresetId.CINEMATIC -> CaptionStyle(id, CaptionFont.ELEGANT, 52f, 0xFFF5F0E8, 0xFFF5D0A9, false, 0, false, 0x99000000, 0f, true, 0.72f, CaptionAlign.CENTER, CaptionAnimation.FADE, 6, letterSpacing = 0.04f)
-            CaptionPresetId.CLEAN_CLINICAL -> CaptionStyle(id, CaptionFont.ROUNDED, 52f, 0xFF0F172A, 0xFF0EA5E9, false, 0xF2FFFFFF, true, 0, 0f, false, 0.68f, CaptionAlign.CENTER, CaptionAnimation.WORD_HIGHLIGHT, 5)
+            CaptionPresetId.CLEAN_CLINICAL -> CaptionStyle(id, CaptionFont.ROUNDED, 50f, 0xFF111827, 0xFF9D174D, false, 0xF2FFFFFF, true, 0, 0f, false, 0.70f, CaptionAlign.CENTER, CaptionAnimation.FADE, 5)
             CaptionPresetId.CUSTOM -> CaptionStyle(preset = id)
         }
     }

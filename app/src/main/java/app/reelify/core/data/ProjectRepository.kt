@@ -23,6 +23,12 @@ import app.reelify.core.model.ReelStyle
 import app.reelify.core.model.SectionPurpose
 import app.reelify.core.model.SectionRevision
 import app.reelify.core.model.BrandProfile
+import app.reelify.core.model.ScriptMeta
+import app.reelify.core.template.ProductionMode
+import app.reelify.core.template.ProductionPlanner
+import app.reelify.core.template.ReelTemplate
+import app.reelify.core.template.SectionScript
+import app.reelify.core.template.TemplateOverrides
 import app.reelify.core.util.AppJson
 import app.reelify.core.util.Clock
 import app.reelify.core.util.Ids
@@ -84,6 +90,78 @@ class ProjectRepository(
         project
     }
 
+    /**
+     * Creates a Reelify 2.0 project from a production template. The full template is snapshotted
+     * into the project so later template updates never change it; sections and edit settings are
+     * produced deterministically by [ProductionPlanner].
+     */
+    suspend fun createFromTemplate(
+        language: ReelLanguage,
+        treatmentId: String,
+        duration: ReelDuration,
+        template: ReelTemplate,
+        title: String,
+        baseEdit: EditSettings = EditSettings(),
+    ): Project = writeLock.withLock {
+        val now = clock.now()
+        val edit = ProductionPlanner.templateEdit(template, duration, baseEdit)
+        val project = Project(
+            id = Ids.new(), title = title, createdAt = now, updatedAt = now, language = language,
+            treatmentId = treatmentId, duration = duration, style = legacyStyleFor(template), edit = edit,
+            mode = ProductionMode.TEMPLATE, template = template,
+        )
+        dao.upsert(project.toEntity())
+        val sections = ProductionPlanner.sections(template, emptyList(), { "sec-" + Ids.new() }, now)
+        dao.upsertSections(sections.map { it.toEntity(project.id) })
+        project
+    }
+
+    /**
+     * Writes AI/user script content into a template project. Only spoken script, headline and
+     * emphasis are taken from [scripts]; template-owned shot settings are re-applied from the
+     * project's template snapshot. Locked sections are preserved. Revisions are recorded.
+     */
+    suspend fun applyScript(
+        id: String,
+        meta: ScriptMeta,
+        scripts: List<SectionScript>,
+        reason: String,
+        respectLocks: Boolean = true,
+        onlyIndex: Int? = null,
+        title: String? = null,
+    ): ProjectBundle? = writeLock.withLock {
+        val project = dao.get(id)?.toDomain() ?: return null
+        val template = project.template ?: error("Project is not template-based")
+        val existing = dao.getSections(id).mapNotNull { it.toDomain() }.sortedBy { it.index }
+        val now = clock.now()
+        val merged = ProductionPlanner.mergeScript(template, existing, scripts, respectLocks, onlyIndex, now)
+        existing.forEach { old ->
+            val new = merged.first { it.index == old.index }
+            if (new != old && (old.spokenScript.isNotBlank() || old.onScreenText.isNotBlank())) snapshot(id, old, reason)
+        }
+        dao.upsertSections(merged.map { it.toEntity(id) })
+        val updated = project.copy(
+            script = meta,
+            title = title?.takeIf { it.isNotBlank() } ?: project.title,
+            status = if (project.status == ProjectStatus.DRAFT) ProjectStatus.SCRIPTED else project.status,
+            updatedAt = now,
+        )
+        dao.upsert(updated.toEntity())
+        ProjectBundle(updated, merged, dao.getClips(id).mapNotNull { it.toDomain() })
+    }
+
+    /** Drops the user's overrides for [groups] and re-applies the template defaults for them. */
+    suspend fun resetEditToTemplate(id: String, groups: Set<app.reelify.core.model.EditGroup>) = update(id) { p ->
+        val t = p.template ?: return@update p
+        val cleared = p.edit.copy(userOverrides = p.edit.userOverrides - groups)
+        p.copy(edit = ProductionPlanner.applyTemplateDefaults(cleared, t, p.duration).copy(editVersion = p.edit.editVersion + 1))
+    }
+
+    suspend fun updateScriptMeta(id: String, transform: (ScriptMeta) -> ScriptMeta) = update(id) { it.copy(script = transform(it.script ?: ScriptMeta())) }
+
+    suspend fun updateTemplateOverrides(id: String, transform: (TemplateOverrides) -> TemplateOverrides) =
+        update(id) { it.copy(templateOverrides = transform(it.templateOverrides)) }
+
     /** Read-modify-write of the project row. Returns the updated project or null if missing. */
     suspend fun update(id: String, transform: (Project) -> Project): Project? = writeLock.withLock {
         val current = dao.get(id)?.toDomain() ?: return null
@@ -94,8 +172,17 @@ class ProjectRepository(
 
     suspend fun updateConcept(id: String, concept: ReelConcept) = update(id) { it.copy(concept = concept) }
     suspend fun updateFeedback(id: String, feedback: CreativeFeedback?) = update(id) { it.copy(feedback = feedback) }
-    suspend fun updateEdit(id: String, transform: (EditSettings) -> EditSettings) =
-        update(id) { p -> p.copy(edit = transform(p.edit).let { e -> e.copy(editVersion = p.edit.editVersion + 1) }) }
+    /**
+     * Updates edit settings. When [byUser] is true, every changed group is recorded in
+     * [EditSettings.userOverrides] so template automation never resets the user's choices.
+     */
+    suspend fun updateEdit(id: String, byUser: Boolean = true, transform: (EditSettings) -> EditSettings) =
+        update(id) { p ->
+            val next = transform(p.edit)
+            val kept = p.edit.userOverrides + next.userOverrides // overrides are only cleared by resetEditToTemplate()
+            val overrides = if (byUser) kept + p.edit.changedGroups(next) else kept
+            p.copy(edit = next.copy(editVersion = p.edit.editVersion + 1, userOverrides = overrides))
+        }
     suspend fun updateCaptions(id: String, captions: CaptionTrack?) = update(id) { it.copy(captions = captions) }
     suspend fun updateExport(id: String, export: ExportInfo?) =
         update(id) { it.copy(export = export, status = if (export?.path != null) ProjectStatus.EXPORTED else it.status) }
@@ -206,8 +293,13 @@ class ProjectRepository(
     suspend fun duplicateAsTemplate(id: String): Project? {
         val bundle = getBundle(id) ?: return null
         val p = bundle.project
-        val created = create(p.language, p.treatmentId, p.duration, p.style, p.title + " (copy)", p.edit.copy(editVersion = 0))
-        update(created.id) { it.copy(concept = p.concept, feedback = p.feedback) }
+        val created = if (p.isTemplate) createFromTemplate(p.language, p.treatmentId, p.duration, p.template!!, p.title + " (copy)", p.edit.copy(editVersion = 0))
+            else create(p.language, p.treatmentId, p.duration, p.style, p.title + " (copy)", p.edit.copy(editVersion = 0))
+        update(created.id) { it.copy(concept = p.concept, feedback = p.feedback, script = p.script, templateOverrides = p.templateOverrides, edit = p.edit.copy(editVersion = 0)) }
+        if (p.isTemplate) {
+            applyScript(created.id, p.script ?: ScriptMeta(), bundle.sections.map { SectionScript(it.index, it.spokenScript, it.onScreenText, it.captionEmphasis) }, "duplicate", respectLocks = false)
+            return getProject(created.id)
+        }
         bundle.project.plan?.let { plan ->
             applyPlan(created.id, plan, bundle.sections.map { it.copy(locked = false) }, "duplicate", respectLocks = false)
         }
@@ -241,6 +333,12 @@ internal fun Project.toEntity() = ProjectEntity(
     captionsJson = captions?.let { AppJson.encodeToString(CaptionTrack.serializer(), it) },
     brandJson = brandSnapshot?.let { AppJson.encodeToString(BrandProfile.serializer(), it) },
     exportJson = export?.let { AppJson.encodeToString(ExportInfo.serializer(), it) },
+    mode = mode.name,
+    templateId = template?.id,
+    templateVersion = template?.version,
+    templateJson = template?.let { AppJson.encodeToString(ReelTemplate.serializer(), it) },
+    overridesJson = AppJson.encodeToString(TemplateOverrides.serializer(), templateOverrides),
+    scriptJson = script?.let { AppJson.encodeToString(ScriptMeta.serializer(), it) },
 )
 
 internal fun ProjectEntity.toDomain(): Project? = runCatching {
@@ -258,8 +356,22 @@ internal fun ProjectEntity.toDomain(): Project? = runCatching {
         brandSnapshot = AppJson.decodeOrNull<BrandProfile>(brandJson),
         export = AppJson.decodeOrNull<ExportInfo>(exportJson),
         thumbnailPath = thumbnailPath,
+        mode = runCatching { ProductionMode.valueOf(mode) }.getOrDefault(ProductionMode.LEGACY),
+        template = AppJson.decodeOrNull<ReelTemplate>(templateJson),
+        templateOverrides = AppJson.decodeOrNull<TemplateOverrides>(overridesJson) ?: TemplateOverrides(),
+        script = AppJson.decodeOrNull<ScriptMeta>(scriptJson),
     )
 }.getOrNull()
+
+/** Keeps the legacy style column meaningful for template projects (used by older screens/filters). */
+internal fun legacyStyleFor(t: ReelTemplate): ReelStyle = when (t.id) {
+    "myth_buster" -> ReelStyle.MYTH_VS_FACT
+    "treatment_showcase" -> ReelStyle.TREATMENT_DEMO
+    "problem_approach" -> ReelStyle.PROBLEM_SOLUTION
+    "expert_explains" -> ReelStyle.MIXED_TALKING_BROLL
+    "patient_question", "three_things" -> ReelStyle.EDUCATIONAL
+    else -> ReelStyle.EDUCATIONAL
+}
 
 internal fun ReelSection.toEntity(projectId: String) = SectionEntity(
     id = id, projectId = projectId, sectionIndex = index, locked = locked, updatedAt = updatedAt,

@@ -86,6 +86,8 @@ data class ReelSection(
     val mediaPlan: MediaPlan = MediaPlan.RECORD_TALKING,
     val locked: Boolean = false,
     val updatedAt: Long = 0,
+    /** Template shot role (Reelify 2.0). Null for legacy sections. */
+    val role: String? = null,
 )
 
 @Serializable
@@ -281,6 +283,10 @@ data class SafeZone(val top: Float = 0.11f, val bottom: Float = 0.20f, val left:
 @Serializable
 enum class FillStrategy { NONE, BRAND_CARD }
 
+/** Groups of edit settings. A group the user has changed is never reset by template automation. */
+@Serializable
+enum class EditGroup { CAPTIONS, MUSIC, TRANSITIONS, COLOR, BRANDING, SFX, EFFECTS, AUDIO }
+
 @Serializable
 data class EditSettings(
     val captions: CaptionSettings = CaptionSettings(),
@@ -295,6 +301,39 @@ data class EditSettings(
     val quality: ExportQuality = ExportQuality.STANDARD,
     val fill: Map<String, FillStrategy> = emptyMap(),
     val editVersion: Int = 0,
+    val userOverrides: Set<EditGroup> = emptySet(),
+) {
+    /** Groups whose values differ between this and [other] (bookkeeping fields excluded). */
+    fun changedGroups(other: EditSettings): Set<EditGroup> = buildSet {
+        if (captions != other.captions) add(EditGroup.CAPTIONS)
+        if (music != other.music) add(EditGroup.MUSIC)
+        if (transitions != other.transitions) add(EditGroup.TRANSITIONS)
+        if (color != other.color) add(EditGroup.COLOR)
+        if (branding != other.branding) add(EditGroup.BRANDING)
+        if (sfx != other.sfx) add(EditGroup.SFX)
+        if (effects != other.effects) add(EditGroup.EFFECTS)
+        if (audio != other.audio) add(EditGroup.AUDIO)
+    }
+}
+
+/** One opening line option with the creative technique it uses. */
+@Serializable
+data class HookOption(val style: String, val text: String)
+
+/** Metadata of an AI-written (template-driven) script. Production settings never live here. */
+@Serializable
+data class ScriptMeta(
+    val topicTitle: String = "",
+    val topicKey: String? = null,
+    val creativeAngle: String = "",
+    val hookOptions: List<HookOption> = emptyList(),
+    val selectedHook: Int = 0,
+    val ctaStyle: String = "",
+    val medicalReview: List<ClaimFlag> = emptyList(),
+    val qualityNotes: List<String> = emptyList(),
+    val model: String = "",
+    val promptVersion: String = "",
+    val generatedAt: Long = 0,
 )
 
 @Serializable
@@ -332,7 +371,15 @@ data class Project(
     val brandSnapshot: BrandProfile? = null,
     val export: ExportInfo? = null,
     val thumbnailPath: String? = null,
-)
+    /** Reelify 2.0: LEGACY for projects created before templates existed. */
+    val mode: app.reelify.core.template.ProductionMode = app.reelify.core.template.ProductionMode.LEGACY,
+    /** Full snapshot of the template version this project was created with. */
+    val template: app.reelify.core.template.ReelTemplate? = null,
+    val templateOverrides: app.reelify.core.template.TemplateOverrides = app.reelify.core.template.TemplateOverrides(),
+    val script: ScriptMeta? = null,
+) {
+    val isTemplate: Boolean get() = mode == app.reelify.core.template.ProductionMode.TEMPLATE && template != null
+}
 
 data class ProjectBundle(
     val project: Project,

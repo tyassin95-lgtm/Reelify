@@ -136,5 +136,5 @@ fun ExportScreen(pid: String, onBack: () -> Unit, onHome: () -> Unit) {
 }
 
 private fun kotlinx.coroutines.CoroutineScope.launchEdit(c: app.reelify.AppContainer, pid: String, t: (app.reelify.core.model.EditSettings) -> app.reelify.core.model.EditSettings) {
-    launch { c.projects.updateEdit(pid, t) }
+    launch { c.projects.updateEdit(pid, transform = t) }
 }

@@ -55,6 +55,9 @@ class AppContainer(context: Context) {
     val openAi = OpenAiClient(http, credentials, modelProvider = { settings.current().openAiModel.ifBlank { BuildConfig.DEFAULT_OPENAI_MODEL } })
     val deepgram = DeepgramClient(http, credentials, modelProvider = { settings.current().deepgramModel.ifBlank { BuildConfig.DEFAULT_DEEPGRAM_MODEL } })
     val director = ReelDirector(openAi, timing = { timingState.value })
+    val scriptWriter = app.reelify.integration.openai.ScriptWriter(openAi, timing = { timingState.value })
+    val templates = app.reelify.core.template.TemplateRepository(database.contentDao())
+    val content = app.reelify.core.content.ContentRepository(database.contentDao())
 
     val probe = MediaProbe(appContext)
     val thumbnails = Thumbnails(appContext)
