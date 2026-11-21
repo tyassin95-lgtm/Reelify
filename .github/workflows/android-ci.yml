@@ -1,0 +1,59 @@
+name: Android CI
+
+on:
+  push:
+    branches: [ main, master, "reelify-*" ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests-and-build:
+    name: Build, Unit & Robolectric Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      - name: Run unit tests, Room migration tests, AI schema & catalog validation
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+
+      - name: Run Android Lint (non-fatal warnings reported)
+        run: ./gradlew :app:lintDebug --no-daemon --console=plain
+
+      - name: Assemble debug APK
+        run: ./gradlew :app:assembleDebug --no-daemon --console=plain
+
+      - name: Upload debug APK artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reelify-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
+
+      - name: Upload test & lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-and-lint-reports
+          path: |
+            app/build/reports/tests/
+            app/build/reports/lint-results-debug.html
+          if-no-files-found: warn
