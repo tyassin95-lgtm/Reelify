@@ -9,6 +9,7 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
 import app.reelify.core.model.MediaKind
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -33,6 +34,43 @@ class MediaProbe(private val context: Context) {
     suspend fun probe(uri: Uri, mimeHint: String? = null): MediaInfo = withContext(Dispatchers.IO) {
         val mime = mimeHint ?: context.contentResolver.getType(uri) ?: guessMime(uri)
         if (mime?.startsWith("image/") == true) probeImage(uri) else probeAv(uri)
+    }
+
+    /**
+     * Alternate metadata duration fallback when [probe] cannot determine container duration or when
+     * an existing clip lost its metadata. Returns 0L if genuinely unavailable (never fabricates).
+     */
+    suspend fun probeDurationFallback(uri: Uri): Long = withContext(Dispatchers.IO) {
+        val mmr = MediaMetadataRetriever()
+        val fromRetriever = try {
+            mmr.setDataSource(context, uri)
+            mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()?.takeIf { it > 0L } ?: 0L
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            0L
+        } finally {
+            runCatching { mmr.release() }
+        }
+        if (fromRetriever > 0L) return@withContext fromRetriever
+
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(context, uri, null)
+            var best = 0L
+            for (i in 0 until extractor.trackCount) {
+                val f = extractor.getTrackFormat(i)
+                val us = f.longOrNull(MediaFormat.KEY_DURATION) ?: 0L
+                if (us > 0L) best = maxOf(best, us / 1000L)
+            }
+            best
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            0L
+        } finally {
+            runCatching { extractor.release() }
+        }
     }
 
     private fun guessMime(uri: Uri): String? {
