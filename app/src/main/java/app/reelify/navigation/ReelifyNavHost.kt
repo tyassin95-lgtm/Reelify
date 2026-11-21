@@ -132,7 +132,8 @@ fun ReelifyNavHost(nav: NavHostController = rememberNavController()) {
                 onFootage = { nav.navigateFootage(pid) },
                 onScript = { nav.navigateScript(pid) },
                 onExport = { nav.navigate(Routes.export(pid)) },
-                onRebuild = { nav.navigate(Routes.autoEdit(pid, force = true)) })
+                onRebuild = { nav.navigate(Routes.autoEdit(pid, force = true)) },
+                onTrim = { cid -> nav.navigate(Routes.trim(cid)) })
         }
         composable(Routes.EDITOR) { e -> TimelineEditorScreen(e.arguments!!.getString("pid")!!, onBack = back) }
         composable(Routes.CAPTIONS) { e -> CaptionEditorScreen(e.arguments!!.getString("pid")!!, onBack = back) }

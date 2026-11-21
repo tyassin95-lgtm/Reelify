@@ -85,6 +85,8 @@ class PreviewViewModel(private val c: AppContainer, private val pid: String) : V
 
     fun undoAi() { val prev = beforeAi ?: return; viewModelScope.launch { c.projects.updateEdit(pid) { prev }; beforeAi = null; _ui.update { it.copy(canUndoAi = false, aiSummary = null) } } }
 
+    fun resetToTemplate(group: app.reelify.core.model.EditGroup) = viewModelScope.launch { c.projects.resetEditToTemplate(pid, setOf(group)) }
+
     fun saveCaptionPreset(name: String) = viewModelScope.launch {
         val style = bundle.value?.project?.edit?.captions?.style ?: return@launch
         c.settings.saveCaptionPreset(app.reelify.core.data.SavedCaptionPreset(app.reelify.core.util.Ids.new(), name.ifBlank { "My style" }, style.copy(preset = app.reelify.core.model.CaptionPresetId.CUSTOM)))
