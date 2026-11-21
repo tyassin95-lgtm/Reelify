@@ -19,6 +19,9 @@ the build environment. Nothing here is hidden behind a non-functional button in 
   as specified; if your account exposes a different id, change it in *AI Connections → Advanced*
   (the *Test connection* button reports whether the configured model is visible to your key).
 
+* The **minified release build** (R8) compiles successfully, but all on-device tests ran against the
+  debug build. Run the instrumented tests against your signed release before relying on it.
+
 ## Functional limitations / approximations
 
 * **Beauty filter is applied to the preview live, and to recordings at render time** (with the

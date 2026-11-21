@@ -57,6 +57,20 @@ section changes at exactly 10 s / 20 s, vignette/colour grade and the closing CT
 (The "s1/s2/s3" labels and discs belong to the generated test images.) Independent `ffprobe`:
 `h264 900 frames 30/1 fps, duration 30.000000; aac 48000 Hz`.
 
+### UI smoke check on the emulator (manual, via adb)
+
+Home → New Reel setup → Idea → Analyze (no key: clear, retryable "OpenAI isn't configured" error,
+no stuck spinner) → Projects → Arabic script screen (RTL, shaped, timing-fit badges). No Reelify
+crashes were logged. (A SystemUI ANR dialog visible on Home belongs to the emulator, which was
+recovering from a `system_server` restart caused by emulation slowness.)
+
+![screens](images/ui_emulator_screens.png)
+
+Found during this check: rapid text entry could drop characters because the field's value
+round-tripped through a ViewModel `StateFlow`; `ReelTextField` now keeps local edit state. (Under
+the TCG emulator, adb key injection itself still reorders/drops keys, so this was confirmed only as
+far as the emulator allows.)
+
 ## 3. Not executed here (requires hardware or credentials)
 
 * Camera lifecycle, front/rear switching, recorder, retake, interruption, permission denial, 4K/60 fps,

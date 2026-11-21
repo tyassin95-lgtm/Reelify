@@ -59,6 +59,9 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -397,16 +400,22 @@ fun ReelTextField(
     textStyle: TextStyle = MaterialTheme.typography.bodyLarge,
     visualTransformation: androidx.compose.ui.text.input.VisualTransformation = androidx.compose.ui.text.input.VisualTransformation.None,
 ) {
+    // Keep the editing state local so rapid typing/IME bursts never see a stale value coming back
+    // asynchronously from a ViewModel StateFlow (which drops characters). External changes
+    // (e.g. AI regeneration) still replace the text.
+    var local by remember { mutableStateOf(value) }
+    var lastSent by remember { mutableStateOf(value) }
+    LaunchedEffect(value) { if (value != lastSent) { local = value; lastSent = value } }
     Column(modifier) {
         if (label != null) { Text(label, style = MaterialTheme.typography.labelMedium, color = Rf.TextSecondary); Spacer(Modifier.height(6.dp)) }
         BasicTextField(
-            value = value, onValueChange = onChange, singleLine = singleLine, minLines = minLines, maxLines = if (singleLine) 1 else maxLines,
+            value = local, onValueChange = { local = it; lastSent = it; onChange(it) }, singleLine = singleLine, minLines = minLines, maxLines = if (singleLine) 1 else maxLines,
             textStyle = textStyle.copy(color = Rf.Text, textDirection = TextDirection.Content, fontFamily = if (value.any { it in '؀'..'ۿ' }) Tajawal else textStyle.fontFamily),
             cursorBrush = SolidColor(Rf.Rose), keyboardOptions = keyboardOptions, visualTransformation = visualTransformation,
             modifier = Modifier.fillMaxWidth(),
             decorationBox = { inner ->
                 Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Rf.Surface2).border(1.dp, Rf.Border, RoundedCornerShape(16.dp)).padding(16.dp)) {
-                    if (value.isEmpty()) Text(placeholder, style = textStyle.copy(color = Rf.TextTertiary))
+                    if (local.isEmpty()) Text(placeholder, style = textStyle.copy(color = Rf.TextTertiary))
                     inner()
                 }
             },

@@ -11,7 +11,7 @@
 | 7 | Beauty/colour shader, transitions, vignette/light, captions & branding overlay, brand templates | ✅ Done |
 | 8 | Auto-edit pipeline, AI sound design / caption emphasis / edit guidance, quick adjustments | ✅ Done |
 | 9 | Advanced timeline (split/trim/reorder/duplicate/delete/mute, SFX cues, snapping, undo/redo), caption editor | ✅ Done |
-| 10 | Tests, docs, APK | ✅ Debug APK built; release requires your keystore |
+| 10 | Tests, docs, APK | ✅ Debug APK built and run on an emulator; minified release builds (sign with your keystore) |
 
 ## Deliverables
 
