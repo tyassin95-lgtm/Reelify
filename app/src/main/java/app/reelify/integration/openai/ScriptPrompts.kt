@@ -9,26 +9,74 @@ import app.reelify.core.content.StyleExample
  * the Iraqi one is not a translation of the English one. Bump [VERSION] when wording changes.
  */
 object ScriptPrompts {
-    const val VERSION = "2026.11-v2.1"
+    const val VERSION = "2026.11-v2.2"
+
+    fun templateNarrativeBlueprint(templateId: String): String = when (templateId) {
+        "expert_explains" -> """
+TEMPLATE ARC — EXPERT EXPLAINS (One question -> Mechanism -> Practical takeaway):
+- Shot 1 (Curiosity & relevance): State the surprising problem, misconception, or clinical question directly. Do NOT explain the mechanism yet.
+- Shot 2 (Explanation & evidence over visual/B-roll): Deliver the central mechanism, wavelength/depth physics, or biological reason from the verified brief.
+- Shot 3 (Payoff & meaning): Translate that science into what the patient should actually expect or how the plan works. Do NOT re-explain Shot 2.
+""".trimIndent()
+        "myth_buster" -> """
+TEMPLATE ARC — MYTH BUSTER (Common belief -> Correction -> Real clinical implication):
+- Shot 1 (Myth & empathy): Voice the exact misconception patients bring in and why it seems believable on the surface.
+- Shot 2 (Scientific correction): Refute it cleanly with concrete device physics or biological behavior from the brief.
+- Shot 3 (Practical implication): Give the clear clinical takeaway for treatment planning or safety. Do NOT repeat the myth statement.
+""".trimIndent()
+        "treatment_showcase" -> """
+TEMPLATE ARC — TREATMENT SHOWCASE (Procedure context -> What the device is doing -> Real experience/outcome):
+- Shot 1 (Clinical context): Clarify what specific skin or pigment concern is being targeted and set honest context.
+- Shot 2 (Mechanism in motion — voiceover): Narrate what the handpiece/wavelength/depth or cooling system is doing beneath the surface during the passes shown.
+- Shot 3 (What to understand): Explain immediate post-session appearance, recovery, and realistic timing—never restate what the handpiece does.
+""".trimIndent()
+        "three_things" -> """
+TEMPLATE ARC — THREE THINGS (Three distinct clinical points — zero overlap):
+- Shot 1 (Point 1): Teach one distinct clinical rule or parameter fact.
+- Shot 2 (Point 2): Teach a COMPLETELY DIFFERENT fact (mechanism, timeline, or precaution) — must NOT paraphrase Shot 1.
+- Shot 3 (Point 3): Teach a third distinct actionable check or aftercare takeaway + natural CTA.
+""".trimIndent()
+        "patient_question" -> """
+TEMPLATE ARC — PATIENT QUESTION (Real question -> Direct honest answer -> Key clinical nuance):
+- Shot 1 (Question & direct answer): Reflect the patient's real question and give a direct, transparent headline answer without hype.
+- Shot 2 (Evidence behind the answer): Explain the physiological or device factor that explains WHY that answer is true.
+- Shot 3 (The deciding factor / nuance): Explain what changes the plan between cases (depth, skin tone, intervals, barrier) — no repeated consultation cliché.
+""".trimIndent()
+        "problem_approach" -> """
+TEMPLATE ARC — PROBLEM / APPROACH (Recognizable problem -> Clinical reasoning -> Realistic expectation):
+- Shot 1 (Recognizable concern): Describe the exact frustrating skin pattern and why random creams or mismatched steps miss it.
+- Shot 2 (Targeted clinical reasoning): Explain how the chosen modality interacts with that specific depth or chromophore cleanly.
+- Shot 3 (Realistic course & care): Give session spacing, barrier/UV protection rule, and realistic timeline — do NOT summarize Shot 2.
+""".trimIndent()
+        else -> ""
+    }
 
     private val SHARED_RULES = """
 You write ONLY the spoken words and short headlines of a high-value clinical reel for an aesthetic dermatology and laser specialist. The production template (camera, framing, lighting, transitions, music, sound effects, captions, branding) is fixed by the app — never describe or change any of it, and never write stage directions, camera notes, emoji, hashtags or markdown inside spoken lines.
 
-Clinical substance & anti-filler rule:
-- Teach ONE genuine mechanism, parameter (wavelength, depth, pulse width), realistic expectation, contraindication, or misconception from the VERIFIED FACTUAL BRIEF.
-- NEVER write generic filler ("transform your skin", "unlock glowing radiance", "cutting-edge technology", "experience the difference", "أحدث التقنيات", "نضارة لا مثيل لها", "بشرة خالية من العيوب", "احجز جلستك الآن"). Every sentence must carry specific clinical meaning.
-- Mention individual clinical assessment naturally AT MOST ONCE across the entire reel — never pad two or three shots with "it depends on individual assessment".
-- For HIFU (CFU Èlife), NEVER call it a laser; always explain it as focused ultrasound. For unconfirmed clinics/treatments marked NEEDS CONFIGURATION, stay strictly on barrier assessment, sterile hygiene, and consulting the clinic — zero unverified specs or active ingredient claims.
+MANDATORY ENGLISH MEDICAL TERMINOLOGY POLICY (enforced across EN and ar-IQ):
+- In BOTH English AND Iraqi Arabic reels, ALL medical, anatomical, device, modality, wavelength, and condition terms MUST be written in approved English Latin characters:
+  e.g. PicoStar, Aerolase, CFU Èlife, HIFU, Nd:YAG, Er:YAG, Picosecond laser, Fractional laser, Thulium laser, Melasma, Hyperpigmentation, Post-inflammatory hyperpigmentation, Hyperhidrosis, Collagen, Epidermis, Dermis, Stratum corneum, SMAS, Skin resurfacing, Microdermabrasion, Wavelength, 1064 nm, 532 nm, 1927 nm, 2940 nm, 650 microseconds.
+- NEVER transliterate or translate technical medical terms into Arabic script (NO بيكوستار, NO إيروليز, NO هايفو, NO كولاجين, NO الكلف, NO فرط التصبغ, NO سماس, NO الأدمة).
+- Keep Iraqi Arabic sentence structure completely conversational and natural around English terms (e.g. "بـ PicoStar نستخدم Picosecond laser، بس اختيار الـ Wavelength يعتمد على نوع الـ Pigmentation...").
+
+Narrative coherence & anti-repetition rule:
+- Plan ONE cohesive mini-story in `narrative_outline` BEFORE writing the three sections.
+- Every section MUST contribute a distinct step in the arc: no two sections may restate the same point, reiterate the same intro, or both end with "it depends on individual assessment / results vary".
+- Mention individual assessment naturally AT MOST ONCE across the entire reel—never across multiple shots—and NEVER let "every patient is different" serve as the main payoff. Every reel must teach a concrete clinical distinction viewers did not know before watching.
+- Stay strictly focused on the selected topic area; never pull in unrelated indications (e.g. never mention body fat or hyperhidrosis inside a facial lifting script).
+- NEVER write generic filler ("transform your skin", "unlock glowing radiance", "cutting-edge technology", "experience the difference", "أحدث التقنيات", "نضارة لا مثيل لها", "بشرة خالية من العيوب", "احجز جلستك الآن").
+- For HIFU (CFU Èlife), NEVER call it a laser; explain it as HIFU (focused ultrasound). For unconfirmed clinics/treatments marked NEEDS CONFIGURATION, stay strictly on barrier assessment, sterile hygiene, and consulting the clinic — zero unverified specs or active ingredient claims.
 
 Duration & spoken pacing:
-- Strictly three sections of equal duration, following each shot's role and exact word budget target so the speaker finishes cleanly near the end of the shot without rushing or leaving awkward empty dead air.
+- Strictly three sections of equal duration, matching each shot's word budget target so speaking ends comfortably near the end of the shot without filler.
 - Section 1's spoken_script continues straight AFTER the hook (the app places the chosen hook first) — do not repeat the hook.
 
 Hooks & platform tone:
-- Give three hooks using genuinely different clinical techniques (myth contradiction, specific number/physics curiosity, blunt patient question, common mistake). Speakable in under ~3 seconds, zero exaggeration.
-- Instagram Reels: sharper visual curiosity in hook + clear save-worthy clinical breakdown. Snapchat: warmer, direct, first-person clinician voice speaking closely to the viewer.
+- Give three hooks using genuinely different clinical techniques (myth contradiction, specific physics curiosity, blunt patient question, common mistake). Speakable in under ~3 seconds (<= 16 words), zero exaggeration.
+- Instagram Reels: sharper visual curiosity + clear save-worthy clinical breakdown. Snapchat: warmer, direct, first-person clinician voice speaking closely to the viewer.
 
-Headlines: max 5 words, plain text, no quotes. Output must match the JSON schema exactly.
+Headlines: max 5 words, plain text, no quotes, canonical English medical terms. Output must match the JSON schema exactly.
 """.trimIndent()
 
     val SYSTEM_EN = """
@@ -49,8 +97,8 @@ DIALECT RULES (critical):
 """.trim())
         IraqiStyleGuide.toneRules.forEach { appendLine("- $it") }
         appendLine("- The text must NOT sound like: a translated English ad, formal news narration, an academic lecture, generic Gulf or Levantine Arabic, or exaggerated slang.")
-        appendLine("- Write in Arabic script. Device names may stay in their preferred spelling (Latin or Arabic as given in the profile).")
-        appendLine("- Use Western or Arabic-Indic digits consistently; prefer words for small numbers when spoken (ثلاث شغلات).")
+        appendLine("- Write surrounding spoken Iraqi in Arabic script, AND keep ALL medical, anatomical, and device terms in canonical English Latin characters (PicoStar, HIFU, Melasma, Collagen, SMAS, etc.).")
+        appendLine("- Use digits consistently for clinical measurements (e.g. 1064 nm, 3.0 mm, 650 microseconds) and prefer words for small conversational counts (ثلاث شغلات).")
         appendLine()
         appendLine("FORMAL EXPRESSIONS TO AVOID → spoken Iraqi alternative:")
         IraqiStyleGuide.formalMarkers.entries.take(22).forEach { (k, v) -> appendLine("- $k → $v") }
@@ -77,18 +125,30 @@ DIALECT RULES (critical):
     // ------------------------------------------------------------------ tasks
 
     val TASK_GENERATE = """
-TASK: WRITE CLINICAL REEL SCRIPT (v2.1)
-Write the three equal-duration sections grounded strictly in the VERIFIED FACTUAL BRIEF. Teach real device/skin science clearly in natural spoken language, match every shot's role and specific word-count range (aim for the middle-to-upper end of each shot's word target so there is no dead air), avoid promotional clichés, and close Shot 3 cleanly with an honest takeaway and natural CTA.
+TASK: PLAN NARRATIVE OUTLINE & WRITE COHESIVE 3-SHOT REEL SCRIPT (v2.2)
+Step 1: Fill `narrative_outline` with one clear opening question, central clinical insight, primary verified fact IDs, optional accurate analogy, distinct shot1/shot2/shot3 jobs, and a concrete viewer takeaway.
+Step 2: Write the 3 equal-duration sections strictly executing each shot's distinct job without repetition, keeping ALL medical terminology in English Latin characters, and matching the target word range cleanly.
 """.trimIndent()
 
     val TASK_IDEAS = """
-TASK: GENERATE FIVE SPECIFIC CLINICAL CONCEPTS (v2.1)
-Propose five distinct, genuinely educational reel concepts for this treatment and template, anchored to the VERIFIED FACTUAL BRIEF (include exact fact IDs in supporting_fact_ids when present). Avoid vague templates like "Why {treatment} is great" or repeated generic consultations; make each title and hook teach a sharp patient question, mechanism insight, realistic limit, or aftercare safeguard.
+TASK: PROPOSE FIVE SPECIFIC, CLINICALLY GROUNDED REEL CONCEPTS (v2.2)
+Study the GOLD-STANDARD CURATED BENCHMARKS provided in the prompt for how specific, curious, and scientifically concrete each concept should be. Do NOT paraphrase those examples.
+Instead, use the PROVIDED UNDERUSED KNOWLEDGE CLUSTERS to craft 5 original reel concepts for this treatment and template:
+- Each concept MUST anchor to 1-3 real `[fact_id]` entries from the provided clusters (put exact IDs in `supporting_fact_ids`).
+- Each concept MUST pose a genuine patient question or clinical distinction, deliver a concrete scientific answer, fit the template's 3-shot arc, and keep ALL medical terms in canonical English Latin characters even in Iraqi Arabic.
+- Reject generic clinic slogans, vague "Why treatment is great" titles, or five minor rewordings of "How many sessions?".
+""".trimIndent()
+
+    fun taskTargetedRevision(targetSections: Set<Int>, reasons: List<String>): String = """
+TASK: TARGETED EDITORIAL SECTION REVISION (v2.2)
+Only rewrite section(s) ${targetSections.sorted().joinToString()} to fix these exact issues:
+- ${reasons.joinToString("\n- ")}
+Keep all approved verified facts intact, eliminate repetition against the remaining locked sections, keep ALL medical terminology in English Latin script, and stay within the word budget.
 """.trimIndent()
 
     val TASK_HOOKS = """
-TASK: TRY DIFFERENT HOOKS (v2)
-Write three NEW opening hooks for this script using three different techniques. They must differ from the current hooks and from recently used hooks, fit the topic and the first section, and stay medically responsible.
+TASK: TRY DIFFERENT HOOKS (v2.2)
+Write three NEW opening hooks for this script using three different techniques. Keep medical terminology in canonical English Latin script, fit the topic and Shot 1 cleanly, stay speakable under 3 seconds, and avoid repeating current/recent hooks.
 """.trimIndent()
 
     fun taskRewrite(action: ScriptAction): String = when (action) {

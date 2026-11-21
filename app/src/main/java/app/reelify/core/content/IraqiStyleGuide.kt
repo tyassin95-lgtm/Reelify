@@ -30,14 +30,14 @@ data class StyleExample(
  * and final quality is judged by the owner (see Studio → Iraqi style).
  */
 object IraqiStyleGuide {
-    const val VERSION = "iq-style-1"
+    const val VERSION = "iq-style-2"
 
     val toneRules = listOf(
         "Speak as a real Iraqi clinician talking to one patient: warm, confident, clear — never a news anchor or an advert.",
         "Use spoken Iraqi (Baghdadi-leaning, understood nationwide). Avoid Modern Standard Arabic sentence patterns and literal translation from English.",
         "Address viewers in plural second person (انتو / -كم) or singular (انت / -ك) consistently within a reel.",
         "Short sentences with natural rhythm for the camera; one idea per sentence.",
-        "Keep device and treatment names exactly as spelled in the profile (e.g. Aerolase / إيروليز).",
+        "ALWAYS keep medical, anatomical, and device terms in their canonical English Latin spelling (e.g. PicoStar, Aerolase, CFU Èlife, HIFU, Collagen, Melasma, SMAS, Epidermis) while keeping surrounding Iraqi Arabic conversational.",
         "Do not overload with slang or fillers; at most one light filler (يعني، الصراحة) per section.",
         "Do not imitate Gulf or Levantine dialect (e.g. avoid شلونكم→ كيفكم, ايش, هيك, وايد, زين as Gulf 'good').",
         "Vary expressions between reels; never open every reel with the same phrase.",
@@ -86,7 +86,7 @@ object IraqiStyleGuide {
         StyleExample("iq01", "hook", "عندكم تصبغات بالوجه ومحتارين شنو الليزر المناسب؟ خلّي أوضحلكم شغلة مهمة قبل لا تختارون.", "هل تعانون من مشكلات التصبغات الجلدية؟ سوف نتحدث اليوم عن الخيارات العلاجية المتاحة."),
         StyleExample("iq02", "hook", "حبّ الشباب مو بس مشكلة مراهقين، هواية ناس يعانون منه حتى بالثلاثينات.", "إن حب الشباب ليس مقتصراً على فئة المراهقين."),
         StyleExample("iq03", "myth", "أكثر فكرة غلط أسمعها: الليزر يخفّف البشرة. لا، هاي مو صحيحة.", "من الخرافات الشائعة أن الليزر يسبب ترقق الجلد."),
-        StyleExample("iq04", "explanation", "الإيروليز يشتغل بنبضة قصيرة كلش، وعدد الجلسات يختلف من شخص لشخص حسب حالة البشرة.", "يعمل جهاز الإيروليز بنبضات قصيرة جداً، ويختلف عدد الجلسات وفقاً لحالة البشرة."),
+        StyleExample("iq04", "explanation", "الـ Aerolase يشتغل بنبضة 650 microseconds كلش قصيرة، وعدد الجلسات يختلف من شخص لشخص حسب حالة البشرة.", "يعمل جهاز الإيروليز بنبضات قصيرة جداً، ويختلف عدد الجلسات وفقاً لحالة البشرة."),
         StyleExample("iq05", "cta", "إذا محتارين، احجزوا تقييم ونشوف سوا شنو الأنسب إلكم.", "للحجز والاستفسار يرجى التواصل معنا."),
         StyleExample("iq06", "cta", "احفظوا الفيديو حتى ترجعوله قبل جلستكم الجاية."),
         StyleExample("iq07", "cta", "اكتبولي بالتعليقات شنو السؤال اللي يحيّركم، وأجاوبكم بفيديو ثاني."),
@@ -97,7 +97,7 @@ object IraqiStyleGuide {
         StyleExample("iq12", "aftercare", "بعد الجلسة، واقي الشمس مو اختياري. هاي أهم خطوة.", "يجب استخدام واقي الشمس بعد الجلسة."),
         StyleExample("iq13", "preparation", "قبل الجلسة بكم يوم، خففوا الشمس، وكولولنا إذا تستعملون أي كريم.", "يُنصح بتجنب التعرض لأشعة الشمس قبل الجلسة."),
         StyleExample("iq14", "mistake", "أكثر غلطة أشوفها: الناس تبدي جلسات بدون ما تعرف سبب المشكلة أصلاً."),
-        StyleExample("iq15", "device", "هذا جهاز البيكوستار، وخلّي أحجيلكم شلون نستخدمه بالعيادة.", "نقدم لكم اليوم جهاز بيكوستار المتطور."),
+        StyleExample("iq15", "device", "هذا جهاز PicoStar، وخلّي أحجيلكم شلون نشتغل بـ Picosecond laser بالعيادة.", "نقدم لكم اليوم جهاز بيكوستار المتطور."),
         StyleExample("iq16", "behind_scenes", "تعالوا وياي، أوريكم شلون نحضّر الغرفة قبل كل جلسة.", "دعونا نأخذكم في جولة خلف الكواليس."),
         StyleExample("iq17", "scars", "آثار الحبوب مو كلها نفس النوع، وكل نوع إله طريقة علاج.", "تختلف أنواع ندبات حب الشباب، ولكل نوع طريقة علاج خاصة به."),
         StyleExample("iq18", "texture", "إذا ملمس بشرتك مو ناعم والمسامات واضحة، هذا الفيديو إلك."),
@@ -106,7 +106,7 @@ object IraqiStyleGuide {
         StyleExample("iq21", "suitability", "العلاج يناسب الكل؟ لا، وهذا شي طبيعي. التقييم هو اللي يحدد.", "هل يناسب هذا العلاج الجميع؟ لا، فالتقييم هو الذي يحدد ذلك."),
         StyleExample("iq22", "hook_curiosity", "تعرفون ليش بعض الناس ما يشوفون نتيجة من الليزر؟"),
         StyleExample("iq23", "hook_expert", "من خبرتي بالعيادة، السر مو بالجهاز بس، السر بالخطة."),
-        StyleExample("iq24", "pigmentation", "الكلف يرجع إذا ما انتبهنا للشمس، فالعلاج وحده مو كافي.", "قد يعود الكلف في حال عدم الوقاية من الشمس."),
+        StyleExample("iq24", "pigmentation", "الـ Melasma يرجع إذا ما انتبهنا للشمس، فالعلاج وحده مو كافي.", "قد يعود الكلف في حال عدم الوقاية من الشمس."),
     )
 
     /** Built-in lines merged with the owner's corrections/approvals (by id). Rejected lines are excluded. */

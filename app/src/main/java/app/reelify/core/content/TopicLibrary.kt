@@ -54,12 +54,18 @@ data class TopicIdea(
 ) {
     fun titleFor(t: Treatment?, arabic: Boolean): String {
         val raw = if (arabic) title.ar.ifBlank { title.en } else title.en.ifBlank { title.ar }
-        val name = t?.let { if (arabic) it.arabicName.ifBlank { it.name } else it.name } ?: "this treatment"
-        return raw.replace("{t}", name)
+        val name = t?.let {
+            if (arabic) MedicalGlossary.enforceEnglishMedicalTerms(it.arabicName.ifBlank { it.name }).text
+            else it.name
+        } ?: "this treatment"
+        val substituted = raw.replace("{t}", name)
+        return MedicalGlossary.enforceEnglishMedicalTerms(substituted).text
     }
 
-    fun hookFor(arabic: Boolean): String =
-        if (arabic) hookAngle.ar.ifBlank { hookAngle.en } else hookAngle.en.ifBlank { hookAngle.ar }
+    fun hookFor(arabic: Boolean): String {
+        val raw = if (arabic) hookAngle.ar.ifBlank { hookAngle.en } else hookAngle.en.ifBlank { hookAngle.ar }
+        return MedicalGlossary.enforceEnglishMedicalTerms(raw).text
+    }
 }
 
 data class TopicSuggestion(

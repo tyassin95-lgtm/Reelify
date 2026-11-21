@@ -127,13 +127,22 @@ class AutoEditor(
                         val terms = library.terminology()
                         val treatment = library.getTreatment(bundle.project.treatmentId)
                         val keyterms = if (settings.current().sendKeytermsToDeepgram) {
-                            (terms.flatMap { listOf(it.english, it.arabic) } + listOfNotNull(treatment?.name, treatment?.arabicName)).filter { it.isNotBlank() }
+                            (terms.map { it.english } +
+                                app.reelify.core.content.MedicalGlossary.canonicalEnglishList(bundle.project.treatmentId, terms) +
+                                listOfNotNull(treatment?.name))
+                                .filter { it.isNotBlank() }
+                                .distinctBy { it.lowercase() }
+                                .take(40)
                         } else emptyList()
                         val transcript = deepgram.transcribe(audio, "audio/mp4", bundle.project.language, keyterms)
                         val raw = transcript.words.map { CaptionWord(it.text, it.startMs, it.endMs, it.confidence) }
                         val (corrected, fixes) = TerminologyCorrector.correct(raw, terms, bundle.project.language)
+                        val glossaryFixed = corrected.map { w ->
+                            val cleanWord = app.reelify.core.content.MedicalGlossary.enforceEnglishMedicalTerms(w.text, terms).text
+                            if (cleanWord.isNotBlank() && cleanWord != w.text && !cleanWord.contains(' ')) w.copy(text = cleanWord) else w
+                        }
                         if (fixes.isNotEmpty()) warnings += "Applied ${fixes.size} terminology correction(s): " + fixes.take(3).joinToString { "${it.from} → ${it.to}" }
-                        words = CaptionRemapper.anchor(corrected, timeline.dialogue)
+                        words = CaptionRemapper.anchor(glossaryFixed, timeline.dialogue)
                         done += AutoEditStage.TRANSCRIBE
                     } catch (e: CancellationException) {
                         throw e
